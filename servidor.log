@@ -1,0 +1,79 @@
+[2026-06-07 00:08:39] [INFO ] persistencia inicializada
+[2026-06-07 00:08:39] [INFO ] cola de mensajes POSIX creada mqd=6
+[2026-06-07 00:08:39] [INFO ] despachador iniciado
+[2026-06-07 00:08:39] [INFO ] escuchando en puerto 5001
+[2026-06-07 00:08:39] [INFO ] despachador listo mqd=6
+[2026-06-07 00:08:40] [INFO ] conexión fd=8 ip=127.0.0.1
+[2026-06-07 00:08:40] [INFO ] petición encolada fd=8 entidad=2 op=1
+[2026-06-07 00:08:40] [INFO ] inicio op fd=8 entidad=2 op=1
+[2026-06-07 00:08:40] [INFO ] fin op fd=8 entidad=2 op=1 resultado=0
+[2026-06-07 00:08:40] [INFO ] petición encolada fd=8 entidad=3 op=1
+[2026-06-07 00:08:40] [INFO ] inicio op fd=8 entidad=3 op=1
+[2026-06-07 00:08:40] [INFO ] fin op fd=8 entidad=3 op=1 resultado=0
+[2026-06-07 00:08:40] [INFO ] petición encolada fd=8 entidad=1 op=1
+[2026-06-07 00:08:40] [INFO ] inicio op fd=8 entidad=1 op=1
+[2026-06-07 00:08:40] [INFO ] fin op fd=8 entidad=1 op=1 resultado=0
+[2026-06-07 00:08:40] [INFO ] petición encolada fd=8 entidad=4 op=1
+[2026-06-07 00:08:40] [INFO ] inicio op fd=8 entidad=4 op=1
+[2026-06-07 00:08:40] [INFO ] fin op fd=8 entidad=4 op=1 resultado=0
+[2026-06-07 00:08:40] [INFO ] petición encolada fd=8 entidad=1 op=1
+[2026-06-07 00:08:40] [INFO ] inicio op fd=8 entidad=1 op=1
+[2026-06-07 00:08:40] [WARN ] fin op fd=8 entidad=1 op=1 resultado=3
+[2026-06-07 00:08:40] [INFO ] petición encolada fd=8 entidad=1 op=2
+[2026-06-07 00:08:40] [INFO ] inicio op fd=8 entidad=1 op=2
+[2026-06-07 00:08:40] [INFO ] fin op fd=8 entidad=1 op=2 resultado=0
+[2026-06-07 00:08:40] [INFO ] petición encolada fd=8 entidad=2 op=2
+[2026-06-07 00:08:40] [INFO ] inicio op fd=8 entidad=2 op=2
+[2026-06-07 00:08:40] [INFO ] fin op fd=8 entidad=2 op=2 resultado=0
+[2026-06-07 00:08:40] [INFO ] petición encolada fd=8 entidad=3 op=2
+[2026-06-07 00:08:40] [INFO ] inicio op fd=8 entidad=3 op=2
+[2026-06-07 00:08:40] [INFO ] fin op fd=8 entidad=3 op=2 resultado=0
+[2026-06-07 00:08:40] [INFO ] petición encolada fd=8 entidad=4 op=2
+[2026-06-07 00:08:40] [INFO ] inicio op fd=8 entidad=4 op=2
+[2026-06-07 00:08:40] [INFO ] fin op fd=8 entidad=4 op=2 resultado=0
+[2026-06-07 00:08:40] [INFO ] petición encolada fd=8 entidad=1 op=2
+[2026-06-07 00:08:40] [INFO ] inicio op fd=8 entidad=1 op=2
+[2026-06-07 00:08:40] [WARN ] fin op fd=8 entidad=1 op=2 resultado=2
+[2026-06-07 00:08:40] [INFO ] petición encolada fd=8 entidad=4 op=1
+[2026-06-07 00:08:40] [INFO ] inicio op fd=8 entidad=4 op=1
+[2026-06-07 00:08:40] [WARN ] fin op fd=8 entidad=4 op=1 resultado=10
+[2026-06-07 00:08:40] [INFO ] petición encolada fd=8 entidad=4 op=1
+[2026-06-07 00:08:40] [INFO ] inicio op fd=8 entidad=4 op=1
+[2026-06-07 00:08:40] [WARN ] fin op fd=8 entidad=4 op=1 resultado=11
+[2026-06-07 00:08:40] [INFO ] conexión fd=9 ip=127.0.0.1
+[2026-06-07 00:08:40] [INFO ] petición encolada fd=9 entidad=3 op=1
+[2026-06-07 00:08:40] [INFO ] inicio op fd=9 entidad=3 op=1
+[2026-06-07 00:08:40] [INFO ] fin op fd=9 entidad=3 op=1 resultado=0
+[2026-06-07 00:08:40] [INFO ] petición encolada fd=9 entidad=1 op=1
+[2026-06-07 00:08:40] [INFO ] inicio op fd=9 entidad=1 op=1
+[2026-06-07 00:08:40] [INFO ] fin op fd=9 entidad=1 op=1 resultado=0
+[2026-06-07 00:08:40] [INFO ] petición encolada fd=9 entidad=4 op=1
+[2026-06-07 00:08:40] [INFO ] inicio op fd=9 entidad=4 op=1
+[2026-06-07 00:08:40] [WARN ] fin op fd=9 entidad=4 op=1 resultado=12
+[2026-06-07 00:08:40] [INFO ] desconexión fd=9 ip=127.0.0.1
+[2026-06-07 00:08:40] [INFO ] desconexión fd=8 ip=127.0.0.1
+[2026-06-07 00:08:41] [INFO ] conexión fd=10 ip=127.0.0.1
+[2026-06-07 00:08:41] [INFO ] petición encolada fd=10 entidad=1 op=1
+[2026-06-07 00:08:41] [INFO ] inicio op fd=10 entidad=1 op=1
+[2026-06-07 00:08:41] [INFO ] conexión fd=8 ip=127.0.0.1
+[2026-06-07 00:08:41] [INFO ] fin op fd=10 entidad=1 op=1 resultado=0
+[2026-06-07 00:08:41] [INFO ] petición encolada fd=8 entidad=1 op=1
+[2026-06-07 00:08:41] [INFO ] inicio op fd=8 entidad=1 op=1
+[2026-06-07 00:08:41] [INFO ] fin op fd=8 entidad=1 op=1 resultado=0
+[2026-06-07 00:08:41] [INFO ] desconexión fd=10 ip=127.0.0.1
+[2026-06-07 00:08:41] [INFO ] conexión fd=9 ip=127.0.0.1
+[2026-06-07 00:08:41] [INFO ] conexión fd=11 ip=127.0.0.1
+[2026-06-07 00:08:41] [INFO ] petición encolada fd=9 entidad=1 op=1
+[2026-06-07 00:08:41] [INFO ] desconexión fd=8 ip=127.0.0.1
+[2026-06-07 00:08:41] [INFO ] inicio op fd=9 entidad=1 op=1
+[2026-06-07 00:08:41] [INFO ] petición encolada fd=11 entidad=1 op=1
+[2026-06-07 00:08:41] [INFO ] fin op fd=9 entidad=1 op=1 resultado=0
+[2026-06-07 00:08:41] [INFO ] inicio op fd=11 entidad=1 op=1
+[2026-06-07 00:08:41] [INFO ] fin op fd=11 entidad=1 op=1 resultado=0
+[2026-06-07 00:08:41] [INFO ] desconexión fd=9 ip=127.0.0.1
+[2026-06-07 00:08:41] [INFO ] desconexión fd=11 ip=127.0.0.1
+[2026-06-07 00:08:41] [INFO ] conexión fd=10 ip=127.0.0.1
+[2026-06-07 00:08:41] [INFO ] petición encolada fd=10 entidad=1 op=1
+[2026-06-07 00:08:41] [INFO ] inicio op fd=10 entidad=1 op=1
+[2026-06-07 00:08:41] [INFO ] fin op fd=10 entidad=1 op=1 resultado=0
+[2026-06-07 00:08:41] [INFO ] desconexión fd=10 ip=127.0.0.1
