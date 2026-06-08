@@ -1,7 +1,7 @@
 #ifndef MATRICULA_H
 #define MATRICULA_H
 
-#include "../comun/protocolo.h"
+#include "../protocolo/protocolo.h"
 
 /* Códigos de resultado específicos de validación (extienden los RES_* de protocolo.h).
    Se envían en el campo 'resultado' de la respuesta para que el cliente

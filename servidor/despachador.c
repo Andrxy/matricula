@@ -3,7 +3,7 @@
 #include "persistencia.h"
 #include "matricula.h"
 #include "log.h"
-#include "../comun/protocolo.h"
+#include "../protocolo/protocolo.h"
 
 #include <pthread.h>
 #include <stdio.h>
@@ -26,7 +26,7 @@ typedef struct {
 
 /* ── Envío robusto ─────────────────────────────────────────────────────── */
 
-/* send() puede escribir menos bytes de los solicitados; iteramos. */
+/* Envía exactamente tam bytes al socket iterando sobre send(), que puede escribir menos de lo solicitado en cada llamada. */
 static int enviar_exacto(int descriptor, const void *buf, size_t tam)
 {
     size_t total = 0;
@@ -40,8 +40,7 @@ static int enviar_exacto(int descriptor, const void *buf, size_t tam)
     return 0;
 }
 
-/* ── Construcción y envío de respuesta ─────────────────────────────────── */
-
+/* Construye el Mensaje de respuesta, lo serializa y lo envía al cliente por el socket usando el mutex de envío para evitar que hilos concurrentes entrelacen bytes. */
 static void responder(int fd_conexion, uint8_t entidad, uint8_t operacion,
                       uint8_t cod_resultado, const void *datos, uint32_t tam)
 {
@@ -68,14 +67,7 @@ static void responder(int fd_conexion, uint8_t entidad, uint8_t operacion,
 
 /* ── Hilo de operación ─────────────────────────────────────────────────── */
 
-/*
- * Cada mensaje de la cola se despacha a un hilo independiente que:
- *   1. Identifica entidad + operación.
- *   2. Llama a la función de persistencia correspondiente.
- *      (La exclusión mutua sobre los archivos la proveen los mutexes
- *       por entidad declarados en persistencia.c.)
- *   3. Envía la respuesta al cliente vía el socket fd_conexion.
- */
+/* Hilo de operación: identifica la entidad y la operación del mensaje, delega en persistencia y devuelve la respuesta al cliente. */
 static void *ejecutar_operacion(void *argumento)
 {
     ArgOperacion *args = (ArgOperacion *)argumento;
@@ -100,7 +92,7 @@ static void *ejecutar_operacion(void *argumento)
                     responder(fd_conexion, men->entidad, men->operacion, resultado, NULL, 0);
                     break;
                 case OP_BUSCAR:
-                    /* El cliente envía la cédula en est.cedula; se sobreescribe con el resultado. */
+                    /* El cliente envía la cédula en est.cedula y se sobreescribe con el resultado. */
                     resultado = (uint8_t)estudiante_buscar(est.cedula, &est);
                     responder(fd_conexion, men->entidad, men->operacion, resultado,
                               (resultado == RES_OK) ? &est : NULL,
@@ -161,9 +153,7 @@ static void *ejecutar_operacion(void *argumento)
                     responder(fd_conexion, men->entidad, men->operacion, resultado, NULL, 0);
                     break;
                 case OP_BUSCAR:
-                    /* Clave compuesta: cedula_estudiante + codigo_materia. */
-                    resultado = (uint8_t)matricula_buscar(insc.cedula_estudiante,
-                                                          insc.codigo_materia, &insc);
+                    resultado = (uint8_t)matricula_buscar(insc.codigo_matricula, &insc);
                     responder(fd_conexion, men->entidad, men->operacion, resultado,
                               (resultado == RES_OK) ? &insc : NULL,
                               (resultado == RES_OK) ? (uint32_t)sizeof(Matricula) : 0);
@@ -188,8 +178,7 @@ static void *ejecutar_operacion(void *argumento)
     return NULL;
 }
 
-/* ── Loop del despachador ──────────────────────────────────────────────── */
-
+/* Loop principal del despachador: extrae ítems de la cola POSIX con mq_receive y lanza un hilo independiente por cada operación recibida. */
 static void *loop_despachador(void *argumento)
 {
     mqd_t desc_cola = *(mqd_t *)argumento;
@@ -222,14 +211,13 @@ static void *loop_despachador(void *argumento)
             free(args);
             continue;
         }
-        /* El hilo libera su propio ArgOperacion; se limpia solo al terminar. */
+        /* El hilo libera su propio ArgOperacion y se limpia solo al terminar. */
         pthread_detach(hilo_op);
     }
     return NULL;
 }
 
-/* ── Punto de entrada público ──────────────────────────────────────────── */
-
+/* Lanza el hilo del loop_despachador pasándole el descriptor de la cola en el heap para evitar condiciones de carrera con la pila del llamador. */
 int despachador_iniciar(mqd_t desc_cola, pthread_t *hilo_resultado)
 {
     mqd_t *desc_heap = malloc(sizeof(mqd_t));

@@ -16,6 +16,7 @@
    riesgo de deadlock.                                                     */
 static pthread_mutex_t mtx_validacion = PTHREAD_MUTEX_INITIALIZER;
 
+/* Bajo el mutex de validación, verifica que existan el estudiante, el profesor y la materia referenciados. Si alguno falta, deniega la operación con el código de error correspondiente. */
 int matricula_insertar_validado(const Matricula *insc)
 {
     Estudiante est;
@@ -31,20 +32,19 @@ int matricula_insertar_validado(const Matricula *insc)
         return RES_MATRICULA_SIN_ESTUDIANTE;
     }
 
-    /* 2. Verificar que la materia existe.
-          Si existe, mat.cedula_profesor contiene la referencia al profesor. */
+    /* 2. Verificar que el profesor existe (cédula viene directamente del mensaje). */
+    if (profesor_buscar(insc->cedula_profesor, &prof) != RES_OK) {
+        pthread_mutex_unlock(&mtx_validacion);
+        return RES_MATRICULA_SIN_PROFESOR;
+    }
+
+    /* 3. Verificar que la materia existe. */
     if (materia_buscar(insc->codigo_materia, &mat) != RES_OK) {
         pthread_mutex_unlock(&mtx_validacion);
         return RES_MATRICULA_SIN_MATERIA;
     }
 
-    /* 3. Verificar que el profesor asignado a esa materia existe. */
-    if (profesor_buscar(mat.cedula_profesor, &prof) != RES_OK) {
-        pthread_mutex_unlock(&mtx_validacion);
-        return RES_MATRICULA_SIN_PROFESOR;
-    }
-
-    /* 4. Todas las referencias son válidas; delegar la inserción
+    /* 4. Todas las referencias son válidas, se delega la inserción
           (que incluye su propio chequeo de duplicado). */
     resultado = matricula_insertar(insc);
 

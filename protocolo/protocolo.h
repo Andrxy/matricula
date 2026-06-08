@@ -5,14 +5,17 @@
 #include <stddef.h>
 
 /* ── Tamaños de campos ─────────────────────────────────────────────────── */
-#define TAM_NOMBRE      64
-#define TAM_APELLIDO    64
-#define TAM_CEDULA      16
-#define TAM_CODIGO      16
-#define TAM_DESCRIPCION 128
-#define TAM_EMAIL       64
-#define TAM_DEPTO       64
-#define TAM_PAYLOAD     512
+#define TAM_NOMBRE          64
+#define TAM_CEDULA          16
+#define TAM_CODIGO          16
+#define TAM_DESCRIPCION     128
+#define TAM_DIRECCION       128
+#define TAM_TELEFONO        32
+#define TAM_GRADO_ACADEMICO 32
+#define TAM_GRUPO           16
+#define TAM_NRC             16
+#define TAM_HORARIO         64
+#define TAM_PAYLOAD         512
 
 /* ── Códigos de entidad ────────────────────────────────────────────────── */
 #define ENT_ESTUDIANTE  1
@@ -37,31 +40,31 @@
 typedef struct {
     char cedula[TAM_CEDULA];
     char nombre[TAM_NOMBRE];
-    char apellido[TAM_APELLIDO];
-    char email[TAM_EMAIL];
+    char direccion[TAM_DIRECCION];
+    char telefono[TAM_TELEFONO];
 } Estudiante;
 
 typedef struct {
     char cedula[TAM_CEDULA];
     char nombre[TAM_NOMBRE];
-    char apellido[TAM_APELLIDO];
-    char departamento[TAM_DEPTO];
-    char email[TAM_EMAIL];
+    char direccion[TAM_DIRECCION];
+    char telefono[TAM_TELEFONO];
+    char grado_academico[TAM_GRADO_ACADEMICO]; /* Licenciatura | Maestria | Doctorado */
 } Profesor;
 
 typedef struct {
     char codigo[TAM_CODIGO];
-    char nombre[TAM_NOMBRE];
     char descripcion[TAM_DESCRIPCION];
-    int creditos;
-    char cedula_profesor[TAM_CEDULA];
 } Materia;
 
 typedef struct {
+    char codigo_matricula[TAM_CODIGO];
     char cedula_estudiante[TAM_CEDULA];
+    char cedula_profesor[TAM_CEDULA];
+    char grupo[TAM_GRUPO];
+    char nrc[TAM_NRC];
     char codigo_materia[TAM_CODIGO];
-    /* periodo: ej. "2025-1" */
-    char periodo[16];
+    char horario[TAM_HORARIO];
 } Matricula;
 
 /* ── Mensaje genérico ──────────────────────────────────────────────────── */

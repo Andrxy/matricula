@@ -9,7 +9,7 @@
 #include <arpa/inet.h>
 #include <errno.h>
 
-#include "../comun/protocolo.h"
+#include "../protocolo/protocolo.h"
 #include "cola.h"
 #include "persistencia.h"
 #include "despachador.h"
@@ -26,8 +26,7 @@ typedef struct {
     mqd_t desc_cola;
 } ArgHilo;
 
-/* ── Lectura robusta ────────────────────────────────────────────────────── */
-
+/* Garantiza que se lean exactamente tam bytes del socket, iterando porque recv() puede retornar menos en cada llamada. */
 static ssize_t recibir_exacto(int descriptor, void *buf, size_t tam)
 {
     size_t total = 0;
@@ -40,8 +39,7 @@ static ssize_t recibir_exacto(int descriptor, void *buf, size_t tam)
     return (ssize_t)total;
 }
 
-/* ── Hilo por conexión ──────────────────────────────────────────────────── */
-
+/* Hilo asociado a cada conexión entrante que recibe mensajes del cliente y los encola en la cola POSIX para que el despachador los procese. */
 static void *atender_cliente(void *argumento)
 {
     ArgHilo *args = (ArgHilo *)argumento;
@@ -100,8 +98,7 @@ static void *atender_cliente(void *argumento)
     return NULL;
 }
 
-/* ── Main ───────────────────────────────────────────────────────────────── */
-
+/* Inicializa el sistema en orden (log, persistencia, cola POSIX, despachador) y entra al accept loop para atender conexiones TCP. */
 int main(void)
 {
     if (log_iniciar(ARCHIVO_LOG) < 0) exit(1);

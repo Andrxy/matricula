@@ -1,7 +1,7 @@
 #ifndef PERSISTENCIA_H
 #define PERSISTENCIA_H
 
-#include "../comun/protocolo.h"
+#include "../protocolo/protocolo.h"
 
 /* Crea el directorio de datos si no existe.
    Debe llamarse una vez desde main antes de cualquier operación. */
@@ -18,6 +18,6 @@ int matricula_insertar(const Matricula *insc);
 int estudiante_buscar(const char *cedula, Estudiante *destino);
 int profesor_buscar(const char *cedula, Profesor *destino);
 int materia_buscar(const char *codigo, Materia *destino);
-int matricula_buscar(const char *cedula_estudiante, const char *codigo_materia, Matricula *destino);
+int matricula_buscar(const char *codigo_matricula, Matricula *destino);
 
 #endif /* PERSISTENCIA_H */

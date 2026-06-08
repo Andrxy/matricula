@@ -1,5 +1,5 @@
 #include "menu.h"
-#include "../comun/protocolo.h"
+#include "../protocolo/protocolo.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -13,7 +13,7 @@
 
 /* ── Helpers de entrada ────────────────────────────────────────────────── */
 
-/* Descarta caracteres sobrantes en stdin hasta '\n' o EOF. */
+/* Descarta los caracteres que quedaron en el buffer de stdin después de una lectura truncada, hasta encontrar '\n' o EOF. */
 static void vaciar_stdin(void)
 {
     int c;
@@ -21,9 +21,7 @@ static void vaciar_stdin(void)
         ;
 }
 
-/* Lee un campo de texto no vacío.
-   Si el usuario escribe más de tam_max-1 chars, descarta el exceso.
-   Retorna 0 en éxito, -1 en EOF (Ctrl+D). */
+/* Solicita un campo de texto no vacío en un loop, descartando el exceso si el usuario supera el límite y repitiendo si el campo queda vacío. */
 static int leer_campo(const char *etiqueta, char *destino, size_t tam_max)
 {
     for (;;) {
@@ -37,27 +35,7 @@ static int leer_campo(const char *etiqueta, char *destino, size_t tam_max)
     }
 }
 
-/* Lee un entero >= 1. Retorna 0 en éxito, -1 en EOF. */
-static int leer_entero(const char *etiqueta, int *destino)
-{
-    char buf_entrada[32];
-    for (;;) {
-        printf("  %-16s: ", etiqueta);
-        fflush(stdout);
-        if (!fgets(buf_entrada, sizeof(buf_entrada), stdin)) return -1;
-        if (!strchr(buf_entrada, '\n')) vaciar_stdin();
-        buf_entrada[strcspn(buf_entrada, "\n")] = '\0';
-        char *fin;
-        long valor = strtol(buf_entrada, &fin, 10);
-        if (fin != buf_entrada && *fin == '\0' && valor >= 1) {
-            *destino = (int)valor;
-            return 0;
-        }
-        printf("  (ingrese un numero entero mayor que cero)\n");
-    }
-}
-
-/* Lee una opción entera en [minimo, maximo]. Retorna el valor o -1 en EOF. */
+/* Lee una opción numérica del rango [minimo, maximo] en un loop, rechazando entradas no numéricas o fuera de rango hasta que el usuario ingrese algo válido. */
 static int leer_opcion(int minimo, int maximo)
 {
     char buf_lectura[16];
@@ -77,7 +55,7 @@ static int leer_opcion(int minimo, int maximo)
 
 /* ── Comunicación con el servidor ──────────────────────────────────────── */
 
-/* send() puede escribir menos bytes de los solicitados; iteramos. */
+/* Serializa el mensaje a un buffer plano y lo envía completo al servidor iterando sobre send() hasta agotar los bytes. */
 static int enviar_msg(int fd_socket, const Mensaje *men)
 {
     char buf_serial[TAM_BUFFER_MSG];
@@ -92,7 +70,7 @@ static int enviar_msg(int fd_socket, const Mensaje *men)
     return 0;
 }
 
-/* recv() puede devolver menos bytes de los solicitados; iteramos. */
+/* Recibe el buffer completo del servidor iterando sobre recv() y lo deserializa en un struct Mensaje. */
 static int recibir_msg(int fd_socket, Mensaje *men)
 {
     char buf_serial[TAM_BUFFER_MSG];
@@ -106,7 +84,7 @@ static int recibir_msg(int fd_socket, Mensaje *men)
     return msg_deserializar(buf_serial, men);
 }
 
-/* Envía men y recibe la respuesta en respuesta. Imprime error y retorna -1 si falla. */
+/* Envía el mensaje al servidor y espera la respuesta. Si la comunicación falla en cualquier dirección, imprime el error y retorna error. */
 static int transaccion(int fd_socket, const Mensaje *men, Mensaje *respuesta)
 {
     if (enviar_msg(fd_socket, men) < 0 || recibir_msg(fd_socket, respuesta) < 0) {
@@ -116,41 +94,58 @@ static int transaccion(int fd_socket, const Mensaje *men, Mensaje *respuesta)
     return 0;
 }
 
-/* ── Visualización de entidades ────────────────────────────────────────── */
+/* Muestra un submenú con las tres opciones de grado académico y copia el string correspondiente al buffer de destino. */
+static int leer_grado_academico(char *destino, size_t tam_max)
+{
+    static const char *grados[] = {"Licenciatura", "Maestria", "Doctorado"};
+    printf("  Grado Academico:\n");
+    printf("    1. Licenciatura\n    2. Maestria\n    3. Doctorado\n");
+    int opcion = leer_opcion(1, 3);
+    if (opcion < 0) return -1;
+    strncpy(destino, grados[opcion - 1], tam_max - 1);
+    destino[tam_max - 1] = '\0';
+    return 0;
+}
 
+/* Imprime en pantalla todos los campos del Estudiante recibido. */
 static void mostrar_estudiante(const Estudiante *est)
 {
-    printf("  Cedula   : %s\n", est->cedula);
-    printf("  Nombre   : %s %s\n", est->nombre, est->apellido);
-    printf("  Email    : %s\n", est->email);
+    printf("  Cedula    : %s\n", est->cedula);
+    printf("  Nombre    : %s\n", est->nombre);
+    printf("  Direccion : %s\n", est->direccion);
+    printf("  Telefono  : %s\n", est->telefono);
 }
 
+/* Imprime en pantalla todos los campos del Profesor, incluyendo el grado académico. */
 static void mostrar_profesor(const Profesor *prof)
 {
-    printf("  Cedula   : %s\n", prof->cedula);
-    printf("  Nombre   : %s %s\n", prof->nombre, prof->apellido);
-    printf("  Depto    : %s\n", prof->departamento);
-    printf("  Email    : %s\n", prof->email);
+    printf("  Cedula    : %s\n", prof->cedula);
+    printf("  Nombre    : %s\n", prof->nombre);
+    printf("  Direccion : %s\n", prof->direccion);
+    printf("  Telefono  : %s\n", prof->telefono);
+    printf("  Grado     : %s\n", prof->grado_academico);
 }
 
+/* Imprime en pantalla el código y la descripción de la Materia. */
 static void mostrar_materia(const Materia *mat)
 {
     printf("  Codigo      : %s\n", mat->codigo);
-    printf("  Nombre      : %s\n", mat->nombre);
     printf("  Descripcion : %s\n", mat->descripcion);
-    printf("  Creditos    : %d\n", mat->creditos);
-    printf("  Profesor    : %s\n", mat->cedula_profesor);
 }
 
+/* Imprime en pantalla todos los campos de la Matricula, incluyendo estudiante, profesor, materia y horario. */
 static void mostrar_matricula(const Matricula *insc)
 {
-    printf("  Estudiante  : %s\n", insc->cedula_estudiante);
-    printf("  Materia     : %s\n", insc->codigo_materia);
-    printf("  Periodo     : %s\n", insc->periodo);
+    printf("  Cod. Matricula : %s\n", insc->codigo_matricula);
+    printf("  Estudiante     : %s\n", insc->cedula_estudiante);
+    printf("  Profesor       : %s\n", insc->cedula_profesor);
+    printf("  Grupo          : %s\n", insc->grupo);
+    printf("  NRC            : %s\n", insc->nrc);
+    printf("  Materia        : %s\n", insc->codigo_materia);
+    printf("  Horario        : %s\n", insc->horario);
 }
 
-/* ── Operaciones: Estudiante ───────────────────────────────────────────── */
-
+/* Solicita al usuario los datos del estudiante, construye un mensaje OP_INSERTAR y lo envía al servidor mostrando el resultado de la operación. */
 static int op_ingresar_estudiante(int fd_socket)
 {
     printf("\n--- Ingresar Estudiante ---\n");
@@ -158,8 +153,8 @@ static int op_ingresar_estudiante(int fd_socket)
     memset(&est, 0, sizeof(est));
     if (leer_campo("Cedula", est.cedula, TAM_CEDULA) < 0) return -1;
     if (leer_campo("Nombre", est.nombre, TAM_NOMBRE) < 0) return -1;
-    if (leer_campo("Apellido", est.apellido, TAM_APELLIDO) < 0) return -1;
-    if (leer_campo("Email", est.email, TAM_EMAIL) < 0) return -1;
+    if (leer_campo("Direccion", est.direccion, TAM_DIRECCION) < 0) return -1;
+    if (leer_campo("Telefono", est.telefono, TAM_TELEFONO) < 0) return -1;
 
     Mensaje men, respuesta;
     memset(&men, 0, sizeof(men));
@@ -176,6 +171,7 @@ static int op_ingresar_estudiante(int fd_socket)
     return 0;
 }
 
+/* Solicita la cédula, envía un mensaje OP_BUSCAR al servidor y muestra los datos del estudiante si la respuesta es RES_OK. */
 static int op_buscar_estudiante(int fd_socket)
 {
     printf("\n--- Buscar Estudiante ---\n");
@@ -200,8 +196,7 @@ static int op_buscar_estudiante(int fd_socket)
     return 0;
 }
 
-/* ── Operaciones: Profesor ─────────────────────────────────────────────── */
-
+/* Solicita los datos del profesor (incluyendo el grado académico) y envía el mensaje de inserción al servidor. */
 static int op_ingresar_profesor(int fd_socket)
 {
     printf("\n--- Ingresar Profesor ---\n");
@@ -209,9 +204,9 @@ static int op_ingresar_profesor(int fd_socket)
     memset(&prof, 0, sizeof(prof));
     if (leer_campo("Cedula", prof.cedula, TAM_CEDULA) < 0) return -1;
     if (leer_campo("Nombre", prof.nombre, TAM_NOMBRE) < 0) return -1;
-    if (leer_campo("Apellido", prof.apellido, TAM_APELLIDO) < 0) return -1;
-    if (leer_campo("Departamento", prof.departamento, TAM_DEPTO) < 0) return -1;
-    if (leer_campo("Email", prof.email, TAM_EMAIL) < 0) return -1;
+    if (leer_campo("Direccion", prof.direccion, TAM_DIRECCION) < 0) return -1;
+    if (leer_campo("Telefono", prof.telefono, TAM_TELEFONO) < 0) return -1;
+    if (leer_grado_academico(prof.grado_academico, TAM_GRADO_ACADEMICO) < 0) return -1;
 
     Mensaje men, respuesta;
     memset(&men, 0, sizeof(men));
@@ -228,6 +223,7 @@ static int op_ingresar_profesor(int fd_socket)
     return 0;
 }
 
+/* Solicita la cédula del profesor, envía el mensaje de búsqueda y muestra los datos si el servidor los encuentra. */
 static int op_buscar_profesor(int fd_socket)
 {
     printf("\n--- Buscar Profesor ---\n");
@@ -252,18 +248,14 @@ static int op_buscar_profesor(int fd_socket)
     return 0;
 }
 
-/* ── Operaciones: Materia ──────────────────────────────────────────────── */
-
+/* Solicita el código y la descripción de la materia y envía el mensaje de inserción al servidor. */
 static int op_ingresar_materia(int fd_socket)
 {
     printf("\n--- Ingresar Materia ---\n");
     Materia mat;
     memset(&mat, 0, sizeof(mat));
     if (leer_campo("Codigo", mat.codigo, TAM_CODIGO) < 0) return -1;
-    if (leer_campo("Nombre", mat.nombre, TAM_NOMBRE) < 0) return -1;
     if (leer_campo("Descripcion", mat.descripcion, TAM_DESCRIPCION) < 0) return -1;
-    if (leer_entero("Creditos", &mat.creditos) < 0) return -1;
-    if (leer_campo("Ced. Profesor", mat.cedula_profesor, TAM_CEDULA) < 0) return -1;
 
     Mensaje men, respuesta;
     memset(&men, 0, sizeof(men));
@@ -280,6 +272,7 @@ static int op_ingresar_materia(int fd_socket)
     return 0;
 }
 
+/* Solicita el código de la materia, envía el mensaje de búsqueda y muestra los datos si el servidor los encuentra. */
 static int op_buscar_materia(int fd_socket)
 {
     printf("\n--- Buscar Materia ---\n");
@@ -304,16 +297,19 @@ static int op_buscar_materia(int fd_socket)
     return 0;
 }
 
-/* ── Operaciones: Matricula ────────────────────────────────────────────── */
-
+/* Solicita todos los campos de la matrícula, envía el mensaje de inserción e interpreta el código de resultado para informar qué referencia falta si la operación falla. */
 static int op_ingresar_matricula(int fd_socket)
 {
     printf("\n--- Ingresar Matricula ---\n");
     Matricula insc;
     memset(&insc, 0, sizeof(insc));
+    if (leer_campo("Cod. Matricula", insc.codigo_matricula, TAM_CODIGO) < 0) return -1;
     if (leer_campo("Ced. Estudiante", insc.cedula_estudiante, TAM_CEDULA) < 0) return -1;
+    if (leer_campo("Ced. Profesor", insc.cedula_profesor, TAM_CEDULA) < 0) return -1;
+    if (leer_campo("Grupo", insc.grupo, TAM_GRUPO) < 0) return -1;
+    if (leer_campo("NRC", insc.nrc, TAM_NRC) < 0) return -1;
     if (leer_campo("Cod. Materia", insc.codigo_materia, TAM_CODIGO) < 0) return -1;
-    if (leer_campo("Periodo", insc.periodo, sizeof(insc.periodo)) < 0) return -1;
+    if (leer_campo("Horario", insc.horario, TAM_HORARIO) < 0) return -1;
 
     Mensaje men, respuesta;
     memset(&men, 0, sizeof(men));
@@ -344,13 +340,13 @@ static int op_ingresar_matricula(int fd_socket)
     return 0;
 }
 
+/* Solicita el código de matrícula, envía el mensaje de búsqueda y muestra el registro completo si el servidor lo encuentra. */
 static int op_buscar_matricula(int fd_socket)
 {
     printf("\n--- Buscar Matricula ---\n");
     Matricula insc;
     memset(&insc, 0, sizeof(insc));
-    if (leer_campo("Ced. Estudiante", insc.cedula_estudiante, TAM_CEDULA) < 0) return -1;
-    if (leer_campo("Cod. Materia", insc.codigo_materia, TAM_CODIGO) < 0) return -1;
+    if (leer_campo("Cod. Matricula", insc.codigo_matricula, TAM_CODIGO) < 0) return -1;
 
     Mensaje men, respuesta;
     memset(&men, 0, sizeof(men));
@@ -369,8 +365,7 @@ static int op_buscar_matricula(int fd_socket)
     return 0;
 }
 
-/* ── Submenús por entidad ──────────────────────────────────────────────── */
-
+/* Muestra el submenú de Estudiantes en loop y despacha hacia la operación de ingreso o búsqueda según la opción elegida. */
 static int submenu_estudiante(int fd_socket)
 {
     for (;;) {
@@ -385,6 +380,7 @@ static int submenu_estudiante(int fd_socket)
     }
 }
 
+/* Muestra el submenú de Profesores en loop y despacha hacia la operación de ingreso o búsqueda según la opción elegida. */
 static int submenu_profesor(int fd_socket)
 {
     for (;;) {
@@ -399,6 +395,7 @@ static int submenu_profesor(int fd_socket)
     }
 }
 
+/* Muestra el submenú de Materias en loop y despacha hacia la operación de ingreso o búsqueda según la opción elegida. */
 static int submenu_materia(int fd_socket)
 {
     for (;;) {
@@ -413,6 +410,7 @@ static int submenu_materia(int fd_socket)
     }
 }
 
+/* Muestra el submenú de Matrículas en loop y despacha hacia la operación de ingreso o búsqueda según la opción elegida. */
 static int submenu_matricula(int fd_socket)
 {
     for (;;) {
@@ -427,8 +425,7 @@ static int submenu_matricula(int fd_socket)
     }
 }
 
-/* ── Menú principal ────────────────────────────────────────────────────── */
-
+/* Muestra el menú principal en loop y redirige al submenú correspondiente según la opción del usuario. Retorna cuando el usuario elige Salir o se pierde la conexión. */
 int menu_principal(int fd_socket)
 {
     printf("\n========================================\n");

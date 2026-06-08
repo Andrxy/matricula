@@ -2,7 +2,7 @@
 #define COLA_H
 
 #include <mqueue.h>
-#include "../comun/protocolo.h"
+#include "../protocolo/protocolo.h"
 
 /* Nombre de la cola POSIX: debe comenzar con '/'. */
 #define NOMBRE_COLA "/matricula_srv"
