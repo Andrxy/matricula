@@ -9,7 +9,7 @@
 #include <arpa/inet.h>
 #include <errno.h>
 
-#include "../common/protocolo.h"
+#include "../comun/protocolo.h"
 #include "cola.h"
 #include "persistencia.h"
 #include "despachador.h"
@@ -22,81 +22,81 @@
 /* ── Argumento del hilo por conexión ───────────────────────────────────── */
 
 typedef struct {
-    int   connfd;
-    mqd_t qid;
+    int fd_conexion;
+    mqd_t desc_cola;
 } ArgHilo;
 
 /* ── Lectura robusta ────────────────────────────────────────────────────── */
 
-static ssize_t recibir_exacto(int fd, void *buf, size_t n)
+static ssize_t recibir_exacto(int descriptor, void *buf, size_t tam)
 {
     size_t total = 0;
-    while (total < n) {
-        ssize_t r = recv(fd, (char *)buf + total, n - total, 0);
-        if (r == 0)  return 0;
-        if (r < 0)   return -1;
-        total += (size_t)r;
+    while (total < tam) {
+        ssize_t leidos = recv(descriptor, (char *)buf + total, tam - total, 0);
+        if (leidos == 0) return 0;
+        if (leidos < 0) return -1;
+        total += (size_t)leidos;
     }
     return (ssize_t)total;
 }
 
 /* ── Hilo por conexión ──────────────────────────────────────────────────── */
 
-static void *atender_cliente(void *arg)
+static void *atender_cliente(void *argumento)
 {
-    ArgHilo *a = (ArgHilo *)arg;
-    int   connfd = a->connfd;
-    mqd_t qid    = a->qid;
-    free(a);
+    ArgHilo *args = (ArgHilo *)argumento;
+    int fd_conexion = args->fd_conexion;
+    mqd_t desc_cola = args->desc_cola;
+    free(args);
 
     char ip_cliente[INET_ADDRSTRLEN] = "desconocida";
-    struct sockaddr_in peer;
-    socklen_t peer_len = sizeof(peer);
-    if (getpeername(connfd, (struct sockaddr *)&peer, &peer_len) == 0)
-        inet_ntop(AF_INET, &peer.sin_addr, ip_cliente, sizeof(ip_cliente));
+    struct sockaddr_in par_remoto;
+    socklen_t tam_par = sizeof(par_remoto);
+    if (getpeername(fd_conexion, (struct sockaddr *)&par_remoto, &tam_par) == 0)
+        inet_ntop(AF_INET, &par_remoto.sin_addr, ip_cliente, sizeof(ip_cliente));
 
-    char lbuf[128];
-    snprintf(lbuf, sizeof(lbuf), "conexión fd=%d ip=%s", connfd, ip_cliente);
-    log_evento(LOG_INFO, lbuf);
+    char buf_log[128];
+    snprintf(buf_log, sizeof(buf_log), "conexión fd=%d ip=%s", fd_conexion, ip_cliente);
+    log_evento(LOG_INFO, buf_log);
 
-    char buf[TAM_BUFFER_MSG];
-    Mensaje msg;
+    char buf_msg[TAM_BUFFER_MSG];
+    Mensaje men;
 
     for (;;) {
-        ssize_t r = recibir_exacto(connfd, buf, TAM_BUFFER_MSG);
-        if (r == 0) {
-            snprintf(lbuf, sizeof(lbuf), "desconexión fd=%d ip=%s", connfd, ip_cliente);
-            log_evento(LOG_INFO, lbuf);
+        ssize_t leidos = recibir_exacto(fd_conexion, buf_msg, TAM_BUFFER_MSG);
+        if (leidos == 0) {
+            snprintf(buf_log, sizeof(buf_log), "desconexión fd=%d ip=%s", fd_conexion, ip_cliente);
+            log_evento(LOG_INFO, buf_log);
             break;
         }
-        if (r < 0) {
-            snprintf(lbuf, sizeof(lbuf), "recv error fd=%d ip=%s", connfd, ip_cliente);
-            log_evento(LOG_ERROR, lbuf);
-            break;
-        }
-
-        if (msg_deserializar(buf, &msg) < 0) {
-            snprintf(lbuf, sizeof(lbuf), "msg_deserializar falló fd=%d", connfd);
-            log_evento(LOG_ERROR, lbuf);
+        if (leidos < 0) {
+            snprintf(buf_log, sizeof(buf_log), "recv error fd=%d ip=%s", fd_conexion, ip_cliente);
+            log_evento(LOG_ERROR, buf_log);
             break;
         }
 
-        ItemCola item;
-        item.connfd = connfd;
-        item.msg    = msg;
-        if (cola_encolar(qid, &item) < 0) {
-            snprintf(lbuf, sizeof(lbuf), "cola_encolar falló fd=%d", connfd);
-            log_evento(LOG_ERROR, lbuf);
+        if (msg_deserializar(buf_msg, &men) < 0) {
+            snprintf(buf_log, sizeof(buf_log), "msg_deserializar falló fd=%d", fd_conexion);
+            log_evento(LOG_ERROR, buf_log);
             break;
         }
 
-        snprintf(lbuf, sizeof(lbuf),
+        ItemCola peticion;
+        peticion.fd_conexion = fd_conexion;
+        peticion.mensaje = men;
+        if (cola_encolar(desc_cola, &peticion) < 0) {
+            snprintf(buf_log, sizeof(buf_log), "cola_encolar falló fd=%d", fd_conexion);
+            log_evento(LOG_ERROR, buf_log);
+            break;
+        }
+
+        snprintf(buf_log, sizeof(buf_log),
                  "petición encolada fd=%d entidad=%u op=%u",
-                 connfd, msg.entidad, msg.operacion);
-        log_evento(LOG_INFO, lbuf);
+                 fd_conexion, men.entidad, men.operacion);
+        log_evento(LOG_INFO, buf_log);
     }
 
-    close(connfd);
+    close(fd_conexion);
     return NULL;
 }
 
@@ -109,90 +109,91 @@ int main(void)
     persistencia_init();
     log_evento(LOG_INFO, "persistencia inicializada");
 
-    mqd_t qid = cola_crear();
-    if (qid == (mqd_t)-1) {
+    mqd_t desc_cola = cola_crear();
+    if (desc_cola == (mqd_t)-1) {
         log_evento(LOG_ERROR, "no se pudo crear la cola de mensajes");
         persistencia_destruir();
         log_cerrar();
         exit(1);
     }
 
-    char lbuf[64];
-    snprintf(lbuf, sizeof(lbuf), "cola de mensajes POSIX creada mqd=%d", (int)qid);
-    log_evento(LOG_INFO, lbuf);
+    char buf_log[64];
+    snprintf(buf_log, sizeof(buf_log), "cola de mensajes POSIX creada mqd=%d", (int)desc_cola);
+    log_evento(LOG_INFO, buf_log);
 
-    pthread_t hilo_desp;
-    if (despachador_iniciar(qid, &hilo_desp) < 0) {
+    pthread_t hilo_despachador;
+    if (despachador_iniciar(desc_cola, &hilo_despachador) < 0) {
         log_evento(LOG_ERROR, "no se pudo iniciar el despachador");
-        cola_destruir(qid);
+        cola_destruir(desc_cola);
         persistencia_destruir();
         log_cerrar();
         exit(1);
     }
-    pthread_detach(hilo_desp);
+    pthread_detach(hilo_despachador);
     log_evento(LOG_INFO, "despachador iniciado");
 
-    int sockfd = socket(AF_INET, SOCK_STREAM, 0);
-    if (sockfd == -1) {
+    int fd_escucha = socket(AF_INET, SOCK_STREAM, 0);
+    if (fd_escucha == -1) {
         log_evento(LOG_ERROR, "socket() falló");
-        cola_destruir(qid);
+        cola_destruir(desc_cola);
         persistencia_destruir();
         log_cerrar();
         exit(1);
     }
 
-    int opt = 1;
-    setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+    int reusar = 1;
+    setsockopt(fd_escucha, SOL_SOCKET, SO_REUSEADDR, &reusar, sizeof(reusar));
 
-    struct sockaddr_in addr;
-    memset(&addr, 0, sizeof(addr));
-    addr.sin_family      = AF_INET;
-    addr.sin_addr.s_addr = INADDR_ANY;
-    addr.sin_port        = htons(PUERTO);
+    struct sockaddr_in direccion;
+    memset(&direccion, 0, sizeof(direccion));
+    direccion.sin_family = AF_INET;
+    direccion.sin_addr.s_addr = INADDR_ANY;
+    direccion.sin_port = htons(PUERTO);
 
-    if (bind(sockfd, (struct sockaddr *)&addr, sizeof(addr)) == -1) {
-        log_evento(LOG_ERROR, "bind() falló");
-        cola_destruir(qid); persistencia_destruir(); log_cerrar(); exit(1);
+    if (bind(fd_escucha, (struct sockaddr *)&direccion, sizeof(direccion)) == -1) {
+        perror("bind");
+        log_evento(LOG_ERROR, "bind() falló — ¿hay ya un servidor corriendo en el puerto?");
+        cola_destruir(desc_cola); persistencia_destruir(); log_cerrar(); exit(1);
     }
-    if (listen(sockfd, BACKLOG) == -1) {
+    if (listen(fd_escucha, BACKLOG) == -1) {
         log_evento(LOG_ERROR, "listen() falló");
-        cola_destruir(qid); persistencia_destruir(); log_cerrar(); exit(1);
+        cola_destruir(desc_cola); persistencia_destruir(); log_cerrar(); exit(1);
     }
 
-    snprintf(lbuf, sizeof(lbuf), "escuchando en puerto %d", PUERTO);
-    log_evento(LOG_INFO, lbuf);
+    snprintf(buf_log, sizeof(buf_log), "escuchando en puerto %d", PUERTO);
+    log_evento(LOG_INFO, buf_log);
     printf("[servidor] escuchando en puerto %d — log: %s\n", PUERTO, ARCHIVO_LOG);
     fflush(stdout);
 
     for (;;) {
-        struct sockaddr_in cliente_addr;
-        socklen_t cliente_len = sizeof(cliente_addr);
+        struct sockaddr_in dir_cliente;
+        socklen_t tam_dir_cliente = sizeof(dir_cliente);
 
-        int connfd = accept(sockfd, (struct sockaddr *)&cliente_addr,
-                            &cliente_len);
-        if (connfd == -1) {
+        int fd_conexion = accept(fd_escucha, (struct sockaddr *)&dir_cliente,
+                                 &tam_dir_cliente);
+        if (fd_conexion == -1) {
             if (errno == EINTR) continue;
             log_evento(LOG_ERROR, "accept() falló");
             continue;
         }
 
-        ArgHilo *a = malloc(sizeof(ArgHilo));
-        if (!a) { close(connfd); continue; }
-        a->connfd = connfd;
-        a->qid    = qid;
+        ArgHilo *args = malloc(sizeof(ArgHilo));
+        if (!args) { close(fd_conexion); continue; }
+        args->fd_conexion = fd_conexion;
+        args->desc_cola = desc_cola;
 
-        pthread_t hilo;
-        if (pthread_create(&hilo, NULL, atender_cliente, a) != 0) {
+        pthread_t hilo_cliente;
+        if (pthread_create(&hilo_cliente, NULL, atender_cliente, args) != 0) {
             log_evento(LOG_ERROR, "pthread_create falló para hilo de conexión");
-            free(a);
-            close(connfd);
+            free(args);
+            close(fd_conexion);
             continue;
         }
-        pthread_detach(hilo);
+        pthread_detach(hilo_cliente);
     }
 
-    close(sockfd);
-    cola_destruir(qid);
+    close(fd_escucha);
+    cola_destruir(desc_cola);
     persistencia_destruir();
     log_cerrar();
     return 0;

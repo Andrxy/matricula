@@ -4,9 +4,9 @@ BINDIR  = build
 
 SRV_SRCS = servidor/servidor.c servidor/cola.c servidor/persistencia.c \
            servidor/matricula.c servidor/despachador.c servidor/log.c \
-           common/protocolo.c
+           comun/protocolo.c
 
-CLI_SRCS = cliente/cliente.c cliente/menu.c common/protocolo.c
+CLI_SRCS = cliente/cliente.c cliente/menu.c comun/protocolo.c
 
 .PHONY: all servidor cliente clean
 

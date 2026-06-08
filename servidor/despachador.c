@@ -3,7 +3,7 @@
 #include "persistencia.h"
 #include "matricula.h"
 #include "log.h"
-#include "../common/protocolo.h"
+#include "../comun/protocolo.h"
 
 #include <pthread.h>
 #include <stdio.h>
@@ -20,47 +20,48 @@ static pthread_mutex_t mtx_envio = PTHREAD_MUTEX_INITIALIZER;
 /* ── Argumento del hilo de operación ───────────────────────────────────── */
 
 typedef struct {
-    int     connfd;
-    Mensaje msg;
+    int fd_conexion;
+    Mensaje mensaje;
 } ArgOperacion;
 
 /* ── Envío robusto ─────────────────────────────────────────────────────── */
 
 /* send() puede escribir menos bytes de los solicitados; iteramos. */
-static int enviar_exacto(int fd, const void *buf, size_t n)
+static int enviar_exacto(int descriptor, const void *buf, size_t tam)
 {
     size_t total = 0;
-    while (total < n) {
+    while (total < tam) {
         /* MSG_NOSIGNAL: evita SIGPIPE si el cliente ya cerró el socket */
-        ssize_t s = send(fd, (const char *)buf + total, n - total, MSG_NOSIGNAL);
-        if (s <= 0) return -1;
-        total += (size_t)s;
+        ssize_t enviados = send(descriptor, (const char *)buf + total,
+                                tam - total, MSG_NOSIGNAL);
+        if (enviados <= 0) return -1;
+        total += (size_t)enviados;
     }
     return 0;
 }
 
 /* ── Construcción y envío de respuesta ─────────────────────────────────── */
 
-static void responder(int connfd, uint8_t entidad, uint8_t operacion,
-                      uint8_t resultado, const void *datos, uint32_t tam)
+static void responder(int fd_conexion, uint8_t entidad, uint8_t operacion,
+                      uint8_t cod_resultado, const void *datos, uint32_t tam)
 {
-    Mensaje resp;
-    memset(&resp, 0, sizeof(resp));
-    resp.entidad    = entidad;
-    resp.operacion  = operacion;
-    resp.resultado  = resultado;
+    Mensaje respuesta;
+    memset(&respuesta, 0, sizeof(respuesta));
+    respuesta.entidad = entidad;
+    respuesta.operacion = operacion;
+    respuesta.resultado = cod_resultado;
     if (datos && tam > 0) {
-        memcpy(resp.payload, datos, tam);
-        resp.tam_payload = tam;
+        memcpy(respuesta.payload, datos, tam);
+        respuesta.tam_payload = tam;
     }
 
-    char buf[TAM_BUFFER_MSG];
-    msg_serializar(&resp, buf);
+    char buf_serial[TAM_BUFFER_MSG];
+    msg_serializar(&respuesta, buf_serial);
 
     /* Sección crítica: un solo hilo escribe al socket a la vez.
        Patrón guia-mutex: lock → sección crítica → unlock.          */
     pthread_mutex_lock(&mtx_envio);
-    if (enviar_exacto(connfd, buf, TAM_BUFFER_MSG) < 0)
+    if (enviar_exacto(fd_conexion, buf_serial, TAM_BUFFER_MSG) < 0)
         perror("send respuesta");
     pthread_mutex_unlock(&mtx_envio);
 }
@@ -73,171 +74,171 @@ static void responder(int connfd, uint8_t entidad, uint8_t operacion,
  *   2. Llama a la función de persistencia correspondiente.
  *      (La exclusión mutua sobre los archivos la proveen los mutexes
  *       por entidad declarados en persistencia.c.)
- *   3. Envía la respuesta al cliente vía el socket connfd.
+ *   3. Envía la respuesta al cliente vía el socket fd_conexion.
  */
-static void *ejecutar_operacion(void *arg)
+static void *ejecutar_operacion(void *argumento)
 {
-    ArgOperacion *a      = (ArgOperacion *)arg;
-    int           connfd = a->connfd;
-    Mensaje      *msg    = &a->msg;
-    uint8_t       res = RES_ERROR;
+    ArgOperacion *args = (ArgOperacion *)argumento;
+    int fd_conexion = args->fd_conexion;
+    Mensaje *men = &args->mensaje;
+    uint8_t resultado = RES_ERROR;
 
-    char lbuf[128];
-    snprintf(lbuf, sizeof(lbuf),
+    char buf_log[128];
+    snprintf(buf_log, sizeof(buf_log),
              "inicio op fd=%d entidad=%u op=%u",
-             connfd, msg->entidad, msg->operacion);
-    log_evento(LOG_INFO, lbuf);
+             fd_conexion, men->entidad, men->operacion);
+    log_evento(LOG_INFO, buf_log);
 
-    switch (msg->entidad) {
+    switch (men->entidad) {
 
         case ENT_ESTUDIANTE: {
-            Estudiante e;
-            msg_desempacar_estudiante(msg, &e);
-            switch (msg->operacion) {
+            Estudiante est;
+            msg_desempacar_estudiante(men, &est);
+            switch (men->operacion) {
                 case OP_INSERTAR:
-                    res = (uint8_t)estudiante_insertar(&e);
-                    responder(connfd, msg->entidad, msg->operacion, res, NULL, 0);
+                    resultado = (uint8_t)estudiante_insertar(&est);
+                    responder(fd_conexion, men->entidad, men->operacion, resultado, NULL, 0);
                     break;
                 case OP_BUSCAR:
-                    /* El cliente envía la cédula en e.cedula; se sobreescribe con el resultado. */
-                    res = (uint8_t)estudiante_buscar(e.cedula, &e);
-                    responder(connfd, msg->entidad, msg->operacion, res,
-                              (res == RES_OK) ? &e    : NULL,
-                              (res == RES_OK) ? (uint32_t)sizeof(Estudiante) : 0);
+                    /* El cliente envía la cédula en est.cedula; se sobreescribe con el resultado. */
+                    resultado = (uint8_t)estudiante_buscar(est.cedula, &est);
+                    responder(fd_conexion, men->entidad, men->operacion, resultado,
+                              (resultado == RES_OK) ? &est : NULL,
+                              (resultado == RES_OK) ? (uint32_t)sizeof(Estudiante) : 0);
                     break;
                 default:
-                    responder(connfd, msg->entidad, msg->operacion, RES_ERROR, NULL, 0);
+                    responder(fd_conexion, men->entidad, men->operacion, RES_ERROR, NULL, 0);
             }
             break;
         }
 
         case ENT_PROFESOR: {
-            Profesor p;
-            msg_desempacar_profesor(msg, &p);
-            switch (msg->operacion) {
+            Profesor prof;
+            msg_desempacar_profesor(men, &prof);
+            switch (men->operacion) {
                 case OP_INSERTAR:
-                    res = (uint8_t)profesor_insertar(&p);
-                    responder(connfd, msg->entidad, msg->operacion, res, NULL, 0);
+                    resultado = (uint8_t)profesor_insertar(&prof);
+                    responder(fd_conexion, men->entidad, men->operacion, resultado, NULL, 0);
                     break;
                 case OP_BUSCAR:
-                    res = (uint8_t)profesor_buscar(p.cedula, &p);
-                    responder(connfd, msg->entidad, msg->operacion, res,
-                              (res == RES_OK) ? &p    : NULL,
-                              (res == RES_OK) ? (uint32_t)sizeof(Profesor) : 0);
+                    resultado = (uint8_t)profesor_buscar(prof.cedula, &prof);
+                    responder(fd_conexion, men->entidad, men->operacion, resultado,
+                              (resultado == RES_OK) ? &prof : NULL,
+                              (resultado == RES_OK) ? (uint32_t)sizeof(Profesor) : 0);
                     break;
                 default:
-                    responder(connfd, msg->entidad, msg->operacion, RES_ERROR, NULL, 0);
+                    responder(fd_conexion, men->entidad, men->operacion, RES_ERROR, NULL, 0);
             }
             break;
         }
 
         case ENT_MATERIA: {
-            Materia m;
-            msg_desempacar_materia(msg, &m);
-            switch (msg->operacion) {
+            Materia mat;
+            msg_desempacar_materia(men, &mat);
+            switch (men->operacion) {
                 case OP_INSERTAR:
-                    res = (uint8_t)materia_insertar(&m);
-                    responder(connfd, msg->entidad, msg->operacion, res, NULL, 0);
+                    resultado = (uint8_t)materia_insertar(&mat);
+                    responder(fd_conexion, men->entidad, men->operacion, resultado, NULL, 0);
                     break;
                 case OP_BUSCAR:
-                    res = (uint8_t)materia_buscar(m.codigo, &m);
-                    responder(connfd, msg->entidad, msg->operacion, res,
-                              (res == RES_OK) ? &m    : NULL,
-                              (res == RES_OK) ? (uint32_t)sizeof(Materia) : 0);
+                    resultado = (uint8_t)materia_buscar(mat.codigo, &mat);
+                    responder(fd_conexion, men->entidad, men->operacion, resultado,
+                              (resultado == RES_OK) ? &mat : NULL,
+                              (resultado == RES_OK) ? (uint32_t)sizeof(Materia) : 0);
                     break;
                 default:
-                    responder(connfd, msg->entidad, msg->operacion, RES_ERROR, NULL, 0);
+                    responder(fd_conexion, men->entidad, men->operacion, RES_ERROR, NULL, 0);
             }
             break;
         }
 
         case ENT_MATRICULA: {
-            Matricula mc;
-            msg_desempacar_matricula(msg, &mc);
-            switch (msg->operacion) {
+            Matricula insc;
+            msg_desempacar_matricula(men, &insc);
+            switch (men->operacion) {
                 case OP_INSERTAR:
-                    res = (uint8_t)matricula_insertar_validado(&mc);
-                    responder(connfd, msg->entidad, msg->operacion, res, NULL, 0);
+                    resultado = (uint8_t)matricula_insertar_validado(&insc);
+                    responder(fd_conexion, men->entidad, men->operacion, resultado, NULL, 0);
                     break;
                 case OP_BUSCAR:
                     /* Clave compuesta: cedula_estudiante + codigo_materia. */
-                    res = (uint8_t)matricula_buscar(mc.cedula_estudiante,
-                                                   mc.codigo_materia, &mc);
-                    responder(connfd, msg->entidad, msg->operacion, res,
-                              (res == RES_OK) ? &mc   : NULL,
-                              (res == RES_OK) ? (uint32_t)sizeof(Matricula) : 0);
+                    resultado = (uint8_t)matricula_buscar(insc.cedula_estudiante,
+                                                          insc.codigo_materia, &insc);
+                    responder(fd_conexion, men->entidad, men->operacion, resultado,
+                              (resultado == RES_OK) ? &insc : NULL,
+                              (resultado == RES_OK) ? (uint32_t)sizeof(Matricula) : 0);
                     break;
                 default:
-                    responder(connfd, msg->entidad, msg->operacion, RES_ERROR, NULL, 0);
+                    responder(fd_conexion, men->entidad, men->operacion, RES_ERROR, NULL, 0);
             }
             break;
         }
 
         default:
-            responder(connfd, msg->entidad, msg->operacion, RES_ERROR, NULL, 0);
-            res = RES_ERROR;
+            responder(fd_conexion, men->entidad, men->operacion, RES_ERROR, NULL, 0);
+            resultado = RES_ERROR;
     }
 
-    snprintf(lbuf, sizeof(lbuf),
+    snprintf(buf_log, sizeof(buf_log),
              "fin op fd=%d entidad=%u op=%u resultado=%u",
-             connfd, msg->entidad, msg->operacion, res);
-    log_evento(res == RES_OK ? LOG_INFO : LOG_WARN, lbuf);
+             fd_conexion, men->entidad, men->operacion, resultado);
+    log_evento(resultado == RES_OK ? LOG_INFO : LOG_WARN, buf_log);
 
-    free(a);
+    free(args);
     return NULL;
 }
 
 /* ── Loop del despachador ──────────────────────────────────────────────── */
 
-static void *loop_despachador(void *arg)
+static void *loop_despachador(void *argumento)
 {
-    mqd_t qid = *(mqd_t *)arg;
-    free(arg);
+    mqd_t desc_cola = *(mqd_t *)argumento;
+    free(argumento);
 
-    char lbuf[64];
-    snprintf(lbuf, sizeof(lbuf), "despachador listo mqd=%d", (int)qid);
-    log_evento(LOG_INFO, lbuf);
+    char buf_log[64];
+    snprintf(buf_log, sizeof(buf_log), "despachador listo mqd=%d", (int)desc_cola);
+    log_evento(LOG_INFO, buf_log);
 
     for (;;) {
-        ItemCola item;
+        ItemCola peticion;
 
-        if (cola_desencolar(qid, &item) < 0) {
+        if (cola_desencolar(desc_cola, &peticion) < 0) {
             if (errno == EINTR) continue;
             log_evento(LOG_ERROR, "cola_desencolar falló");
-            continue;
+            break;   /* EBADF u otro error fatal: no seguir girando */
         }
 
-        ArgOperacion *a = malloc(sizeof(ArgOperacion));
-        if (!a) {
+        ArgOperacion *args = malloc(sizeof(ArgOperacion));
+        if (!args) {
             log_evento(LOG_ERROR, "malloc falló en despachador, petición descartada");
             continue;
         }
-        a->connfd = item.connfd;
-        a->msg    = item.msg;
+        args->fd_conexion = peticion.fd_conexion;
+        args->mensaje = peticion.mensaje;
 
-        pthread_t hilo;
-        if (pthread_create(&hilo, NULL, ejecutar_operacion, a) != 0) {
+        pthread_t hilo_op;
+        if (pthread_create(&hilo_op, NULL, ejecutar_operacion, args) != 0) {
             log_evento(LOG_ERROR, "pthread_create falló para hilo de operación");
-            free(a);
+            free(args);
             continue;
         }
         /* El hilo libera su propio ArgOperacion; se limpia solo al terminar. */
-        pthread_detach(hilo);
+        pthread_detach(hilo_op);
     }
     return NULL;
 }
 
 /* ── Punto de entrada público ──────────────────────────────────────────── */
 
-int despachador_iniciar(mqd_t qid, pthread_t *hilo_out)
+int despachador_iniciar(mqd_t desc_cola, pthread_t *hilo_resultado)
 {
-    mqd_t *qid_heap = malloc(sizeof(mqd_t));
-    if (!qid_heap) return -1;
-    *qid_heap = qid;
+    mqd_t *desc_heap = malloc(sizeof(mqd_t));
+    if (!desc_heap) return -1;
+    *desc_heap = desc_cola;
 
-    if (pthread_create(hilo_out, NULL, loop_despachador, qid_heap) != 0) {
+    if (pthread_create(hilo_resultado, NULL, loop_despachador, desc_heap) != 0) {
         perror("pthread_create despachador");
-        free(qid_heap);
+        free(desc_heap);
         return -1;
     }
     return 0;

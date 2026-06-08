@@ -53,7 +53,7 @@ typedef struct {
     char codigo[TAM_CODIGO];
     char nombre[TAM_NOMBRE];
     char descripcion[TAM_DESCRIPCION];
-    int  creditos;
+    int creditos;
     char cedula_profesor[TAM_CEDULA];
 } Materia;
 
@@ -67,12 +67,12 @@ typedef struct {
 /* ── Mensaje genérico ──────────────────────────────────────────────────── */
 
 typedef struct {
-    uint8_t  entidad;            /* ENT_*  */
-    uint8_t  operacion;          /* OP_*   */
-    uint8_t  resultado;          /* RES_*  (solo en respuestas) */
-    uint8_t  _pad;               /* alineación explícita */
-    uint32_t tam_payload;        /* bytes válidos en payload */
-    char     payload[TAM_PAYLOAD];
+    uint8_t entidad;            /* ENT_*  */
+    uint8_t operacion;          /* OP_*   */
+    uint8_t resultado;          /* RES_*  (solo en respuestas) */
+    uint8_t _pad;               /* alineación explícita */
+    uint32_t tam_payload;       /* bytes válidos en payload */
+    char payload[TAM_PAYLOAD];
 } Mensaje;
 
 /* Tamaño del encabezado serializado (campos fijos antes del payload) */
@@ -83,30 +83,24 @@ typedef struct {
 
 /* ── Serialización / deserialización ───────────────────────────────────── */
 
-/*
- * Serializa msg en buf (TAM_BUFFER_MSG bytes).
- * Devuelve 0 en éxito, -1 si buf es NULL.
- */
-int msg_serializar(const Mensaje *msg, char buf[TAM_BUFFER_MSG]);
+/* Serializa men en buf (TAM_BUFFER_MSG bytes). Devuelve 0 en éxito, -1 si NULL. */
+int msg_serializar(const Mensaje *men, char buf[TAM_BUFFER_MSG]);
 
-/*
- * Deserializa buf en msg.
- * Devuelve 0 en éxito, -1 si algún puntero es NULL.
- */
-int msg_deserializar(const char buf[TAM_BUFFER_MSG], Mensaje *msg);
+/* Deserializa buf en men. Devuelve 0 en éxito, -1 si algún puntero es NULL. */
+int msg_deserializar(const char buf[TAM_BUFFER_MSG], Mensaje *men);
 
 /* ── Helpers de payload ─────────────────────────────────────────────────── */
 
-/* Copia la entidad en msg->payload y ajusta tam_payload. */
-void msg_empacar_estudiante(Mensaje *msg, const Estudiante *e);
-void msg_empacar_profesor  (Mensaje *msg, const Profesor   *p);
-void msg_empacar_materia   (Mensaje *msg, const Materia    *m);
-void msg_empacar_matricula (Mensaje *msg, const Matricula  *mc);
+/* Copia la entidad en men->payload y ajusta tam_payload. */
+void msg_empacar_estudiante(Mensaje *men, const Estudiante *est);
+void msg_empacar_profesor(Mensaje *men, const Profesor *prof);
+void msg_empacar_materia(Mensaje *men, const Materia *mat);
+void msg_empacar_matricula(Mensaje *men, const Matricula *insc);
 
-/* Extrae la entidad desde msg->payload. */
-void msg_desempacar_estudiante(const Mensaje *msg, Estudiante *e);
-void msg_desempacar_profesor  (const Mensaje *msg, Profesor   *p);
-void msg_desempacar_materia   (const Mensaje *msg, Materia    *m);
-void msg_desempacar_matricula (const Mensaje *msg, Matricula  *mc);
+/* Extrae la entidad desde men->payload. */
+void msg_desempacar_estudiante(const Mensaje *men, Estudiante *est);
+void msg_desempacar_profesor(const Mensaje *men, Profesor *prof);
+void msg_desempacar_materia(const Mensaje *men, Materia *mat);
+void msg_desempacar_matricula(const Mensaje *men, Matricula *insc);
 
 #endif /* PROTOCOLO_H */

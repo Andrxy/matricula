@@ -19,9 +19,9 @@
 
 /* ── Mutex por entidad (patrón guia-mutex: PTHREAD_MUTEX_INITIALIZER) ─── */
 static pthread_mutex_t mtx_estudiantes = PTHREAD_MUTEX_INITIALIZER;
-static pthread_mutex_t mtx_profesores  = PTHREAD_MUTEX_INITIALIZER;
-static pthread_mutex_t mtx_materias    = PTHREAD_MUTEX_INITIALIZER;
-static pthread_mutex_t mtx_matriculas  = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t mtx_profesores = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t mtx_materias = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t mtx_matriculas = PTHREAD_MUTEX_INITIALIZER;
 
 /* ── Init / destruir ───────────────────────────────────────────────────── */
 
@@ -42,117 +42,120 @@ void persistencia_destruir(void)
 /* ── Serialización / parseo por entidad ────────────────────────────────── */
 /* Formato de cada línea: campos separados por '|', terminados en '\n'.    */
 
-static void serializar_estudiante(char *buf, const Estudiante *e)
+static void serializar_estudiante(char *linea, const Estudiante *est)
 {
-    snprintf(buf, TAM_LINEA, "%s|%s|%s|%s\n",
-             e->cedula, e->nombre, e->apellido, e->email);
+    snprintf(linea, TAM_LINEA, "%s|%s|%s|%s\n",
+             est->cedula, est->nombre, est->apellido, est->email);
 }
 
-static int parsear_estudiante(char *linea, Estudiante *e)
+static int parsear_estudiante(char *linea, Estudiante *est)
 {
-    memset(e, 0, sizeof(*e));
+    memset(est, 0, sizeof(*est));
     linea[strcspn(linea, "\n")] = '\0';
     return (sscanf(linea, "%15[^|]|%63[^|]|%63[^|]|%63[^|]",
-                   e->cedula, e->nombre, e->apellido, e->email) == 4) ? 0 : -1;
+                   est->cedula, est->nombre, est->apellido, est->email) == 4) ? 0 : -1;
 }
 
-static void serializar_profesor(char *buf, const Profesor *p)
+static void serializar_profesor(char *linea, const Profesor *prof)
 {
-    snprintf(buf, TAM_LINEA, "%s|%s|%s|%s|%s\n",
-             p->cedula, p->nombre, p->apellido, p->departamento, p->email);
+    snprintf(linea, TAM_LINEA, "%s|%s|%s|%s|%s\n",
+             prof->cedula, prof->nombre, prof->apellido, prof->departamento, prof->email);
 }
 
-static int parsear_profesor(char *linea, Profesor *p)
+static int parsear_profesor(char *linea, Profesor *prof)
 {
-    memset(p, 0, sizeof(*p));
+    memset(prof, 0, sizeof(*prof));
     linea[strcspn(linea, "\n")] = '\0';
     return (sscanf(linea, "%15[^|]|%63[^|]|%63[^|]|%63[^|]|%63[^|]",
-                   p->cedula, p->nombre, p->apellido, p->departamento, p->email) == 5) ? 0 : -1;
+                   prof->cedula, prof->nombre, prof->apellido,
+                   prof->departamento, prof->email) == 5) ? 0 : -1;
 }
 
-static void serializar_materia(char *buf, const Materia *m)
+static void serializar_materia(char *linea, const Materia *mat)
 {
-    snprintf(buf, TAM_LINEA, "%s|%s|%s|%d|%s\n",
-             m->codigo, m->nombre, m->descripcion, m->creditos, m->cedula_profesor);
+    snprintf(linea, TAM_LINEA, "%s|%s|%s|%d|%s\n",
+             mat->codigo, mat->nombre, mat->descripcion,
+             mat->creditos, mat->cedula_profesor);
 }
 
-static int parsear_materia(char *linea, Materia *m)
+static int parsear_materia(char *linea, Materia *mat)
 {
-    memset(m, 0, sizeof(*m));
+    memset(mat, 0, sizeof(*mat));
     linea[strcspn(linea, "\n")] = '\0';
     return (sscanf(linea, "%15[^|]|%63[^|]|%127[^|]|%d|%15[^|]",
-                   m->codigo, m->nombre, m->descripcion,
-                   &m->creditos, m->cedula_profesor) == 5) ? 0 : -1;
+                   mat->codigo, mat->nombre, mat->descripcion,
+                   &mat->creditos, mat->cedula_profesor) == 5) ? 0 : -1;
 }
 
-static void serializar_matricula(char *buf, const Matricula *mc)
+static void serializar_matricula(char *linea, const Matricula *insc)
 {
-    snprintf(buf, TAM_LINEA, "%s|%s|%s\n",
-             mc->cedula_estudiante, mc->codigo_materia, mc->periodo);
+    snprintf(linea, TAM_LINEA, "%s|%s|%s\n",
+             insc->cedula_estudiante, insc->codigo_materia, insc->periodo);
 }
 
-static int parsear_matricula(char *linea, Matricula *mc)
+static int parsear_matricula(char *linea, Matricula *insc)
 {
-    memset(mc, 0, sizeof(*mc));
+    memset(insc, 0, sizeof(*insc));
     linea[strcspn(linea, "\n")] = '\0';
     return (sscanf(linea, "%15[^|]|%15[^|]|%15[^|]",
-                   mc->cedula_estudiante, mc->codigo_materia, mc->periodo) == 3) ? 0 : -1;
+                   insc->cedula_estudiante, insc->codigo_materia,
+                   insc->periodo) == 3) ? 0 : -1;
 }
 
 /* ── ESTUDIANTE ────────────────────────────────────────────────────────── */
 
-int estudiante_insertar(const Estudiante *e)
+int estudiante_insertar(const Estudiante *est)
 {
     char linea[TAM_LINEA];
 
     pthread_mutex_lock(&mtx_estudiantes);
 
-    FILE *f = fopen(ARCH_ESTUDIANTES, "r");
-    if (f) {
-        Estudiante tmp;
-        while (fgets(linea, sizeof(linea), f)) {
-            if (parsear_estudiante(linea, &tmp) == 0 &&
-                strncmp(tmp.cedula, e->cedula, TAM_CEDULA) == 0) {
-                fclose(f);
+    FILE *archivo = fopen(ARCH_ESTUDIANTES, "r");
+    if (archivo) {
+        Estudiante temporal;
+        while (fgets(linea, sizeof(linea), archivo)) {
+            if (parsear_estudiante(linea, &temporal) == 0 &&
+                strncmp(temporal.cedula, est->cedula, TAM_CEDULA) == 0) {
+                fclose(archivo);
                 pthread_mutex_unlock(&mtx_estudiantes);
                 return RES_DUPLICADO;
             }
         }
-        fclose(f);
+        fclose(archivo);
     }
 
-    f = fopen(ARCH_ESTUDIANTES, "a");
-    if (!f) {
+    archivo = fopen(ARCH_ESTUDIANTES, "a");
+    if (!archivo) {
         pthread_mutex_unlock(&mtx_estudiantes);
         return RES_ERROR;
     }
-    serializar_estudiante(linea, e);
-    fputs(linea, f);
-    fclose(f);
+    serializar_estudiante(linea, est);
+    fputs(linea, archivo);
+    fclose(archivo);
 
     pthread_mutex_unlock(&mtx_estudiantes);
     return RES_OK;
 }
 
-int estudiante_buscar(const char *cedula, Estudiante *dest)
+int estudiante_buscar(const char *cedula, Estudiante *destino)
 {
     char linea[TAM_LINEA];
     int resultado = RES_NO_ENCONTRADO;
 
     pthread_mutex_lock(&mtx_estudiantes);
 
-    FILE *f = fopen(ARCH_ESTUDIANTES, "r");
-    if (f) {
-        Estudiante tmp;
-        while (fgets(linea, sizeof(linea), f)) {
-            if (parsear_estudiante(linea, &tmp) == 0 &&
-                strncmp(tmp.cedula, cedula, TAM_CEDULA) == 0) {
-                *dest = tmp;
+    FILE *archivo = fopen(ARCH_ESTUDIANTES, "r");
+    if (archivo) {
+        Estudiante temporal;
+        while (fgets(linea, sizeof(linea), archivo)) {
+            if (parsear_estudiante(linea, &temporal) == 0 &&
+                strncmp(temporal.cedula, cedula, TAM_CEDULA) == 0) {
+                *destino = temporal;
                 resultado = RES_OK;
                 break;
             }
         }
-        fclose(f);
+        fclose(archivo);
     }
 
     pthread_mutex_unlock(&mtx_estudiantes);
@@ -161,58 +164,58 @@ int estudiante_buscar(const char *cedula, Estudiante *dest)
 
 /* ── PROFESOR ──────────────────────────────────────────────────────────── */
 
-int profesor_insertar(const Profesor *p)
+int profesor_insertar(const Profesor *prof)
 {
     char linea[TAM_LINEA];
 
     pthread_mutex_lock(&mtx_profesores);
 
-    FILE *f = fopen(ARCH_PROFESORES, "r");
-    if (f) {
-        Profesor tmp;
-        while (fgets(linea, sizeof(linea), f)) {
-            if (parsear_profesor(linea, &tmp) == 0 &&
-                strncmp(tmp.cedula, p->cedula, TAM_CEDULA) == 0) {
-                fclose(f);
+    FILE *archivo = fopen(ARCH_PROFESORES, "r");
+    if (archivo) {
+        Profesor temporal;
+        while (fgets(linea, sizeof(linea), archivo)) {
+            if (parsear_profesor(linea, &temporal) == 0 &&
+                strncmp(temporal.cedula, prof->cedula, TAM_CEDULA) == 0) {
+                fclose(archivo);
                 pthread_mutex_unlock(&mtx_profesores);
                 return RES_DUPLICADO;
             }
         }
-        fclose(f);
+        fclose(archivo);
     }
 
-    f = fopen(ARCH_PROFESORES, "a");
-    if (!f) {
+    archivo = fopen(ARCH_PROFESORES, "a");
+    if (!archivo) {
         pthread_mutex_unlock(&mtx_profesores);
         return RES_ERROR;
     }
-    serializar_profesor(linea, p);
-    fputs(linea, f);
-    fclose(f);
+    serializar_profesor(linea, prof);
+    fputs(linea, archivo);
+    fclose(archivo);
 
     pthread_mutex_unlock(&mtx_profesores);
     return RES_OK;
 }
 
-int profesor_buscar(const char *cedula, Profesor *dest)
+int profesor_buscar(const char *cedula, Profesor *destino)
 {
     char linea[TAM_LINEA];
     int resultado = RES_NO_ENCONTRADO;
 
     pthread_mutex_lock(&mtx_profesores);
 
-    FILE *f = fopen(ARCH_PROFESORES, "r");
-    if (f) {
-        Profesor tmp;
-        while (fgets(linea, sizeof(linea), f)) {
-            if (parsear_profesor(linea, &tmp) == 0 &&
-                strncmp(tmp.cedula, cedula, TAM_CEDULA) == 0) {
-                *dest = tmp;
+    FILE *archivo = fopen(ARCH_PROFESORES, "r");
+    if (archivo) {
+        Profesor temporal;
+        while (fgets(linea, sizeof(linea), archivo)) {
+            if (parsear_profesor(linea, &temporal) == 0 &&
+                strncmp(temporal.cedula, cedula, TAM_CEDULA) == 0) {
+                *destino = temporal;
                 resultado = RES_OK;
                 break;
             }
         }
-        fclose(f);
+        fclose(archivo);
     }
 
     pthread_mutex_unlock(&mtx_profesores);
@@ -221,58 +224,58 @@ int profesor_buscar(const char *cedula, Profesor *dest)
 
 /* ── MATERIA ───────────────────────────────────────────────────────────── */
 
-int materia_insertar(const Materia *m)
+int materia_insertar(const Materia *mat)
 {
     char linea[TAM_LINEA];
 
     pthread_mutex_lock(&mtx_materias);
 
-    FILE *f = fopen(ARCH_MATERIAS, "r");
-    if (f) {
-        Materia tmp;
-        while (fgets(linea, sizeof(linea), f)) {
-            if (parsear_materia(linea, &tmp) == 0 &&
-                strncmp(tmp.codigo, m->codigo, TAM_CODIGO) == 0) {
-                fclose(f);
+    FILE *archivo = fopen(ARCH_MATERIAS, "r");
+    if (archivo) {
+        Materia temporal;
+        while (fgets(linea, sizeof(linea), archivo)) {
+            if (parsear_materia(linea, &temporal) == 0 &&
+                strncmp(temporal.codigo, mat->codigo, TAM_CODIGO) == 0) {
+                fclose(archivo);
                 pthread_mutex_unlock(&mtx_materias);
                 return RES_DUPLICADO;
             }
         }
-        fclose(f);
+        fclose(archivo);
     }
 
-    f = fopen(ARCH_MATERIAS, "a");
-    if (!f) {
+    archivo = fopen(ARCH_MATERIAS, "a");
+    if (!archivo) {
         pthread_mutex_unlock(&mtx_materias);
         return RES_ERROR;
     }
-    serializar_materia(linea, m);
-    fputs(linea, f);
-    fclose(f);
+    serializar_materia(linea, mat);
+    fputs(linea, archivo);
+    fclose(archivo);
 
     pthread_mutex_unlock(&mtx_materias);
     return RES_OK;
 }
 
-int materia_buscar(const char *codigo, Materia *dest)
+int materia_buscar(const char *codigo, Materia *destino)
 {
     char linea[TAM_LINEA];
     int resultado = RES_NO_ENCONTRADO;
 
     pthread_mutex_lock(&mtx_materias);
 
-    FILE *f = fopen(ARCH_MATERIAS, "r");
-    if (f) {
-        Materia tmp;
-        while (fgets(linea, sizeof(linea), f)) {
-            if (parsear_materia(linea, &tmp) == 0 &&
-                strncmp(tmp.codigo, codigo, TAM_CODIGO) == 0) {
-                *dest = tmp;
+    FILE *archivo = fopen(ARCH_MATERIAS, "r");
+    if (archivo) {
+        Materia temporal;
+        while (fgets(linea, sizeof(linea), archivo)) {
+            if (parsear_materia(linea, &temporal) == 0 &&
+                strncmp(temporal.codigo, codigo, TAM_CODIGO) == 0) {
+                *destino = temporal;
                 resultado = RES_OK;
                 break;
             }
         }
-        fclose(f);
+        fclose(archivo);
     }
 
     pthread_mutex_unlock(&mtx_materias);
@@ -281,60 +284,60 @@ int materia_buscar(const char *codigo, Materia *dest)
 
 /* ── MATRICULA ─────────────────────────────────────────────────────────── */
 
-int matricula_insertar(const Matricula *mc)
+int matricula_insertar(const Matricula *insc)
 {
     char linea[TAM_LINEA];
 
     pthread_mutex_lock(&mtx_matriculas);
 
-    FILE *f = fopen(ARCH_MATRICULAS, "r");
-    if (f) {
-        Matricula tmp;
-        while (fgets(linea, sizeof(linea), f)) {
-            if (parsear_matricula(linea, &tmp) == 0 &&
-                strncmp(tmp.cedula_estudiante, mc->cedula_estudiante, TAM_CEDULA) == 0 &&
-                strncmp(tmp.codigo_materia,    mc->codigo_materia,    TAM_CODIGO) == 0) {
-                fclose(f);
+    FILE *archivo = fopen(ARCH_MATRICULAS, "r");
+    if (archivo) {
+        Matricula temporal;
+        while (fgets(linea, sizeof(linea), archivo)) {
+            if (parsear_matricula(linea, &temporal) == 0 &&
+                strncmp(temporal.cedula_estudiante, insc->cedula_estudiante, TAM_CEDULA) == 0 &&
+                strncmp(temporal.codigo_materia, insc->codigo_materia, TAM_CODIGO) == 0) {
+                fclose(archivo);
                 pthread_mutex_unlock(&mtx_matriculas);
                 return RES_DUPLICADO;
             }
         }
-        fclose(f);
+        fclose(archivo);
     }
 
-    f = fopen(ARCH_MATRICULAS, "a");
-    if (!f) {
+    archivo = fopen(ARCH_MATRICULAS, "a");
+    if (!archivo) {
         pthread_mutex_unlock(&mtx_matriculas);
         return RES_ERROR;
     }
-    serializar_matricula(linea, mc);
-    fputs(linea, f);
-    fclose(f);
+    serializar_matricula(linea, insc);
+    fputs(linea, archivo);
+    fclose(archivo);
 
     pthread_mutex_unlock(&mtx_matriculas);
     return RES_OK;
 }
 
-int matricula_buscar(const char *cedula_est, const char *cod_mat, Matricula *dest)
+int matricula_buscar(const char *cedula_estudiante, const char *codigo_materia, Matricula *destino)
 {
     char linea[TAM_LINEA];
     int resultado = RES_NO_ENCONTRADO;
 
     pthread_mutex_lock(&mtx_matriculas);
 
-    FILE *f = fopen(ARCH_MATRICULAS, "r");
-    if (f) {
-        Matricula tmp;
-        while (fgets(linea, sizeof(linea), f)) {
-            if (parsear_matricula(linea, &tmp) == 0 &&
-                strncmp(tmp.cedula_estudiante, cedula_est, TAM_CEDULA) == 0 &&
-                strncmp(tmp.codigo_materia,    cod_mat,    TAM_CODIGO) == 0) {
-                *dest = tmp;
+    FILE *archivo = fopen(ARCH_MATRICULAS, "r");
+    if (archivo) {
+        Matricula temporal;
+        while (fgets(linea, sizeof(linea), archivo)) {
+            if (parsear_matricula(linea, &temporal) == 0 &&
+                strncmp(temporal.cedula_estudiante, cedula_estudiante, TAM_CEDULA) == 0 &&
+                strncmp(temporal.codigo_materia, codigo_materia, TAM_CODIGO) == 0) {
+                *destino = temporal;
                 resultado = RES_OK;
                 break;
             }
         }
-        fclose(f);
+        fclose(archivo);
     }
 
     pthread_mutex_unlock(&mtx_matriculas);

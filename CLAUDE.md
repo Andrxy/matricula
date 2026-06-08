@@ -18,9 +18,8 @@ Secuencia de prompts ordenada por fases, con el anclaje correcto a las **dos gu�
 matricula-distribuido/
 ├── CLAUDE.md                 # convenciones + arquitectura + rúbrica (contexto permanente)
 ├── Makefile
-├── docs/                     # guías MD (las 2 reales)
-│   ├── guia-mutex.md
-│   └── guia-colas-mensajes.md
+├── docs/                     
+│  
 ├── common/
 │   ├── protocolo.h           # structs entidades + struct mensaje + códigos
 │   └── protocolo.c           # serializar / deserializar
