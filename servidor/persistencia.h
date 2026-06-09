@@ -19,4 +19,4 @@ int profesor_buscar(const char *cedula, Profesor *destino);
 int materia_buscar(const char *codigo, Materia *destino);
 int matricula_buscar(const char *codigo_matricula, Matricula *destino);
 
-#endif /* PERSISTENCIA_H */
+#endif 

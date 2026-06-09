@@ -18,4 +18,4 @@ int cola_encolar(mqd_t desc_cola, const ItemCola *elemento);
 int cola_desencolar(mqd_t desc_cola, ItemCola *elemento);
 void cola_destruir(mqd_t desc_cola);
 
-#endif /* COLA_H */
+#endif
