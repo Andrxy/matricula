@@ -12,21 +12,46 @@
 #include <sys/socket.h>
 #include <errno.h>
 
-/* ── Mutex de envío (patrón guia-mutex: PTHREAD_MUTEX_INITIALIZER) ──────
-   Serializa los send() de todos los hilos de operación para evitar que
-   respuestas concurrentes al mismo socket se entrelacen en el wire.     */
+/* Evita que respuestas concurrentes se entrelacen al escribir al socket. */
 static pthread_mutex_t mtx_envio = PTHREAD_MUTEX_INITIALIZER;
-
-/* ── Argumento del hilo de operación ───────────────────────────────────── */
 
 typedef struct {
     int fd_conexion;
     Mensaje mensaje;
 } ArgOperacion;
 
-/* ── Envío robusto ─────────────────────────────────────────────────────── */
+static const char *ent_str(uint8_t e) {
+    switch(e) {
+        case ENT_ESTUDIANTE: return "estudiante";
+        case ENT_PROFESOR:   return "profesor";
+        case ENT_MATERIA:    return "materia";
+        case ENT_MATRICULA:  return "matricula";
+        default:             return "?";
+    }
+}
 
-/* Envía exactamente tam bytes al socket iterando sobre send(), que puede escribir menos de lo solicitado en cada llamada. */
+static const char *op_str(uint8_t op) {
+    switch(op) {
+        case OP_INSERTAR: return "insertar";
+        case OP_BUSCAR:   return "buscar";
+        default:          return "?";
+    }
+}
+
+static const char *res_str(uint8_t r) {
+    switch(r) {
+        case RES_OK:                       return "ok";
+        case RES_ERROR:                    return "error";
+        case RES_NO_ENCONTRADO:            return "no encontrado";
+        case RES_DUPLICADO:                return "duplicado";
+        case RES_MATRICULA_SIN_ESTUDIANTE: return "sin estudiante";
+        case RES_MATRICULA_SIN_MATERIA:    return "sin materia";
+        case RES_MATRICULA_SIN_PROFESOR:   return "sin profesor";
+        default:                           return "?";
+    }
+}
+
+/* send() puede devolver menos de tam bytes por llamada. */
 static int enviar_exacto(int descriptor, const void *buf, size_t tam)
 {
     size_t total = 0;
@@ -40,7 +65,7 @@ static int enviar_exacto(int descriptor, const void *buf, size_t tam)
     return 0;
 }
 
-/* Construye el Mensaje de respuesta, lo serializa y lo envía al cliente por el socket usando el mutex de envío para evitar que hilos concurrentes entrelacen bytes. */
+/* Arma y envía la respuesta bajo el mutex de envío. */
 static void responder(int fd_conexion, uint8_t entidad, uint8_t operacion,
                       uint8_t cod_resultado, const void *datos, uint32_t tam)
 {
@@ -57,17 +82,13 @@ static void responder(int fd_conexion, uint8_t entidad, uint8_t operacion,
     char buf_serial[TAM_BUFFER_MSG];
     msg_serializar(&respuesta, buf_serial);
 
-    /* Sección crítica: un solo hilo escribe al socket a la vez.
-       Patrón guia-mutex: lock → sección crítica → unlock.          */
     pthread_mutex_lock(&mtx_envio);
     if (enviar_exacto(fd_conexion, buf_serial, TAM_BUFFER_MSG) < 0)
         perror("send respuesta");
     pthread_mutex_unlock(&mtx_envio);
 }
 
-/* ── Hilo de operación ─────────────────────────────────────────────────── */
-
-/* Hilo de operación: identifica la entidad y la operación del mensaje, delega en persistencia y devuelve la respuesta al cliente. */
+/* Procesa una operación y envía la respuesta al cliente. */
 static void *ejecutar_operacion(void *argumento)
 {
     ArgOperacion *args = (ArgOperacion *)argumento;
@@ -75,10 +96,9 @@ static void *ejecutar_operacion(void *argumento)
     Mensaje *men = &args->mensaje;
     uint8_t resultado = RES_ERROR;
 
-    char buf_log[128];
-    snprintf(buf_log, sizeof(buf_log),
-             "inicio op fd=%d entidad=%u op=%u",
-             fd_conexion, men->entidad, men->operacion);
+    char buf_log[64];
+    snprintf(buf_log, sizeof(buf_log), ">> %s %s",
+             op_str(men->operacion), ent_str(men->entidad));
     log_evento(LOG_INFO, buf_log);
 
     switch (men->entidad) {
@@ -92,7 +112,7 @@ static void *ejecutar_operacion(void *argumento)
                     responder(fd_conexion, men->entidad, men->operacion, resultado, NULL, 0);
                     break;
                 case OP_BUSCAR:
-                    /* El cliente envía la cédula en est.cedula y se sobreescribe con el resultado. */
+                    /* est.cedula lleva la clave de búsqueda y se sobreescribe con el resultado. */
                     resultado = (uint8_t)estudiante_buscar(est.cedula, &est);
                     responder(fd_conexion, men->entidad, men->operacion, resultado,
                               (resultado == RES_OK) ? &est : NULL,
@@ -169,37 +189,32 @@ static void *ejecutar_operacion(void *argumento)
             resultado = RES_ERROR;
     }
 
-    snprintf(buf_log, sizeof(buf_log),
-             "fin op fd=%d entidad=%u op=%u resultado=%u",
-             fd_conexion, men->entidad, men->operacion, resultado);
+    snprintf(buf_log, sizeof(buf_log), "<< %s %s  %s",
+             op_str(men->operacion), ent_str(men->entidad), res_str(resultado));
     log_evento(resultado == RES_OK ? LOG_INFO : LOG_WARN, buf_log);
 
     free(args);
     return NULL;
 }
 
-/* Loop principal del despachador: extrae ítems de la cola POSIX con mq_receive y lanza un hilo independiente por cada operación recibida. */
+/* Extrae peticiones de la cola y lanza un hilo por operación. */
 static void *loop_despachador(void *argumento)
 {
     mqd_t desc_cola = *(mqd_t *)argumento;
     free(argumento);
-
-    char buf_log[64];
-    snprintf(buf_log, sizeof(buf_log), "despachador listo mqd=%d", (int)desc_cola);
-    log_evento(LOG_INFO, buf_log);
 
     for (;;) {
         ItemCola peticion;
 
         if (cola_desencolar(desc_cola, &peticion) < 0) {
             if (errno == EINTR) continue;
-            log_evento(LOG_ERROR, "cola_desencolar falló");
+            log_evento(LOG_ERROR, "error al leer la cola");
             break;   /* EBADF u otro error fatal: no seguir girando */
         }
 
         ArgOperacion *args = malloc(sizeof(ArgOperacion));
         if (!args) {
-            log_evento(LOG_ERROR, "malloc falló en despachador, petición descartada");
+            log_evento(LOG_ERROR, "sin memoria, petición descartada");
             continue;
         }
         args->fd_conexion = peticion.fd_conexion;
@@ -207,17 +222,16 @@ static void *loop_despachador(void *argumento)
 
         pthread_t hilo_op;
         if (pthread_create(&hilo_op, NULL, ejecutar_operacion, args) != 0) {
-            log_evento(LOG_ERROR, "pthread_create falló para hilo de operación");
+            log_evento(LOG_ERROR, "no se pudo crear hilo de operación");
             free(args);
             continue;
         }
-        /* El hilo libera su propio ArgOperacion y se limpia solo al terminar. */
         pthread_detach(hilo_op);
     }
     return NULL;
 }
 
-/* Lanza el hilo del loop_despachador pasándole el descriptor de la cola en el heap para evitar condiciones de carrera con la pila del llamador. */
+/* desc_heap evita que el descriptor en la pila del caller se invalide. */
 int despachador_iniciar(mqd_t desc_cola, pthread_t *hilo_resultado)
 {
     mqd_t *desc_heap = malloc(sizeof(mqd_t));

@@ -6,7 +6,7 @@
 
 mqd_t cola_crear(void)
 {
-    /* Eliminar cola huérfana de ejecución anterior (se ignora ENOENT). */
+    /* Limpia cola huérfana de corridas anteriores. */
     mq_unlink(NOMBRE_COLA);
 
     struct mq_attr atributos;
@@ -32,7 +32,7 @@ int cola_encolar(mqd_t desc_cola, const ItemCola *elemento)
 
 int cola_desencolar(mqd_t desc_cola, ItemCola *elemento)
 {
-    /* El buffer debe ser >= mq_msgsize; sizeof(ItemCola) lo garantiza. */
+    /* sizeof(ItemCola) satisface el mínimo de mq_msgsize. */
     ssize_t leidos = mq_receive(desc_cola, (char *)elemento, sizeof(ItemCola), NULL);
     if (leidos < 0) {
         perror("mq_receive");

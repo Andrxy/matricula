@@ -6,31 +6,27 @@
 #include <errno.h>
 #include <sys/stat.h>
 
-/* ── Archivos de datos (uno por entidad) ───────────────────────────────── */
 #define DIR_DATOS           "datos"
 #define ARCH_ESTUDIANTES    DIR_DATOS "/estudiantes.dat"
 #define ARCH_PROFESORES     DIR_DATOS "/profesores.dat"
 #define ARCH_MATERIAS       DIR_DATOS "/materias.dat"
 #define ARCH_MATRICULAS     DIR_DATOS "/matriculas.dat"
 
-/* Tamaño máximo de una línea serializada.
-   La línea más larga es Profesor: 15+1+63+1+127+1+31+1+31+\n ≈ 272 bytes. */
+/* La línea más larga (Profesor) mide unos 272 bytes. */
 #define TAM_LINEA 512
 
-/* ── Mutex por entidad (patrón guia-mutex: PTHREAD_MUTEX_INITIALIZER) ─── */
+/* Mutex por entidad */
 static pthread_mutex_t mtx_estudiantes = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t mtx_profesores = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t mtx_materias = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t mtx_matriculas = PTHREAD_MUTEX_INITIALIZER;
 
-/* Crea el directorio de datos donde se guardan los archivos .dat, ignorando el error si ya existe. */
 void persistencia_init(void)
 {
     if (mkdir(DIR_DATOS, 0755) == -1 && errno != EEXIST)
         perror("mkdir " DIR_DATOS);
 }
 
-/* Libera los cuatro mutexes de entidad al momento de cierre del servidor. */
 void persistencia_destruir(void)
 {
     pthread_mutex_destroy(&mtx_estudiantes);
@@ -39,7 +35,7 @@ void persistencia_destruir(void)
     pthread_mutex_destroy(&mtx_matriculas);
 }
 
-/* Divide la línea en tokens separados por '|' modificándola directamente sobre el buffer y llena el arreglo campos con un puntero al inicio de cada token. */
+/* Divide línea en tokens '|' en sitio y llena campos con punteros a cada uno. */
 static int dividir_campos(char *linea, char **campos, int max_campos)
 {
     int n = 0;
@@ -54,14 +50,14 @@ static int dividir_campos(char *linea, char **campos, int max_campos)
     return n;
 }
 
-/* Serializa un Estudiante como línea de texto con los campos separados por '|' y terminada en '\n'. */
+/* Serializa como línea de texto separada por '|'. */
 static void serializar_estudiante(char *linea, const Estudiante *est)
 {
     snprintf(linea, TAM_LINEA, "%s|%s|%s|%s\n",
              est->cedula, est->nombre, est->direccion, est->telefono);
 }
 
-/* Parsea una línea del archivo y llena el struct Estudiante campo a campo. Retorna error si la línea está incompleta. */
+/* Parsea una línea y llena el struct. Retorna -1 si incompleta. */
 static int parsear_estudiante(char *linea, Estudiante *est)
 {
     memset(est, 0, sizeof(*est));
@@ -75,7 +71,7 @@ static int parsear_estudiante(char *linea, Estudiante *est)
     return 0;
 }
 
-/* Serializa un Profesor como línea de texto con los cinco campos separados por '|'. */
+/* Serializa como línea de texto separada por '|'. */
 static void serializar_profesor(char *linea, const Profesor *prof)
 {
     snprintf(linea, TAM_LINEA, "%s|%s|%s|%s|%s\n",
@@ -83,7 +79,7 @@ static void serializar_profesor(char *linea, const Profesor *prof)
              prof->telefono, prof->grado_academico);
 }
 
-/* Parsea una línea del archivo y llena el struct Profesor. Retorna error si faltan campos. */
+/* Parsea una línea y llena el struct. Retorna -1 si incompleta. */
 static int parsear_profesor(char *linea, Profesor *prof)
 {
     memset(prof, 0, sizeof(*prof));
@@ -98,13 +94,13 @@ static int parsear_profesor(char *linea, Profesor *prof)
     return 0;
 }
 
-/* Serializa una Materia como línea de texto con código y descripción separados por '|'. */
+/* Serializa como línea de texto separada por '|'. */
 static void serializar_materia(char *linea, const Materia *mat)
 {
     snprintf(linea, TAM_LINEA, "%s|%s\n", mat->codigo, mat->descripcion);
 }
 
-/* Parsea una línea del archivo y llena el struct Materia. Retorna error si faltan campos. */
+/* Parsea una línea y llena el struct. Retorna -1 si incompleta. */
 static int parsear_materia(char *linea, Materia *mat)
 {
     memset(mat, 0, sizeof(*mat));
@@ -116,7 +112,7 @@ static int parsear_materia(char *linea, Materia *mat)
     return 0;
 }
 
-/* Serializa una Matricula como línea de texto con los siete campos separados por '|'. */
+/* Serializa como línea de texto separada por '|'. */
 static void serializar_matricula(char *linea, const Matricula *insc)
 {
     snprintf(linea, TAM_LINEA, "%s|%s|%s|%s|%s|%s|%s\n",
@@ -124,7 +120,7 @@ static void serializar_matricula(char *linea, const Matricula *insc)
              insc->grupo, insc->nrc, insc->codigo_materia, insc->horario);
 }
 
-/* Parsea una línea del archivo y llena el struct Matricula. Retorna error si faltan campos. */
+/* Parsea una línea y llena el struct. Retorna -1 si incompleta. */
 static int parsear_matricula(char *linea, Matricula *insc)
 {
     memset(insc, 0, sizeof(*insc));
@@ -141,7 +137,7 @@ static int parsear_matricula(char *linea, Matricula *insc)
     return 0;
 }
 
-/* Adquiere el mutex, recorre el archivo para detectar cédula duplicada y, si no existe, agrega el registro al final en modo append. */
+/* Verifica duplicado por cédula y agrega al final si no existe. */
 int estudiante_insertar(const Estudiante *est)
 {
     char linea[TAM_LINEA];
@@ -175,7 +171,7 @@ int estudiante_insertar(const Estudiante *est)
     return RES_OK;
 }
 
-/* Adquiere el mutex y recorre el archivo línea por línea comparando cédulas hasta encontrar el registro o agotar el archivo. */
+/* Busca por cédula recorriendo el archivo línea por línea. */
 int estudiante_buscar(const char *cedula, Estudiante *destino)
 {
     char linea[TAM_LINEA];
@@ -201,7 +197,7 @@ int estudiante_buscar(const char *cedula, Estudiante *destino)
     return resultado;
 }
 
-/* Adquiere el mutex, revisa duplicados por cédula en el archivo y agrega el profesor al final si no existe. */
+/* Verifica duplicado por cédula y agrega al final si no existe. */
 int profesor_insertar(const Profesor *prof)
 {
     char linea[TAM_LINEA];
@@ -235,7 +231,7 @@ int profesor_insertar(const Profesor *prof)
     return RES_OK;
 }
 
-/* Adquiere el mutex y busca el profesor recorriendo el archivo línea por línea por su cédula. */
+/* Busca por cédula recorriendo el archivo línea por línea. */
 int profesor_buscar(const char *cedula, Profesor *destino)
 {
     char linea[TAM_LINEA];
@@ -261,7 +257,7 @@ int profesor_buscar(const char *cedula, Profesor *destino)
     return resultado;
 }
 
-/* Adquiere el mutex, revisa duplicados por código en el archivo y agrega la materia al final si no existe. */
+/* Verifica duplicado por código y agrega al final si no existe. */
 int materia_insertar(const Materia *mat)
 {
     char linea[TAM_LINEA];
@@ -295,7 +291,7 @@ int materia_insertar(const Materia *mat)
     return RES_OK;
 }
 
-/* Adquiere el mutex y busca la materia recorriendo el archivo línea por línea por su código. */
+/* Busca por código recorriendo el archivo línea por línea. */
 int materia_buscar(const char *codigo, Materia *destino)
 {
     char linea[TAM_LINEA];
@@ -321,7 +317,7 @@ int materia_buscar(const char *codigo, Materia *destino)
     return resultado;
 }
 
-/* Adquiere el mutex, revisa duplicados por código de matrícula en el archivo y agrega el registro al final si no existe. */
+/* Verifica duplicado por código y agrega al final si no existe. */
 int matricula_insertar(const Matricula *insc)
 {
     char linea[TAM_LINEA];
@@ -355,7 +351,7 @@ int matricula_insertar(const Matricula *insc)
     return RES_OK;
 }
 
-/* Adquiere el mutex y busca la matrícula recorriendo el archivo línea por línea por su código. */
+/* Busca por código recorriendo el archivo línea por línea. */
 int matricula_buscar(const char *codigo_matricula, Matricula *destino)
 {
     char linea[TAM_LINEA];

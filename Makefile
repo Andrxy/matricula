@@ -8,9 +8,13 @@ SRV_SRCS = servidor/servidor.c servidor/cola.c servidor/persistencia.c \
 
 CLI_SRCS = cliente/cliente.c cliente/menu.c protocolo/protocolo.c
 
-.PHONY: all run-servidor run-cliente kill clean
+.PHONY: all servidor cliente run-servidor run-cliente kill clean
 
 all: $(BINDIR)/servidor $(BINDIR)/cliente
+
+servidor: $(BINDIR)/servidor
+
+cliente: $(BINDIR)/cliente
 
 $(BINDIR)/servidor: $(SRV_SRCS) | $(BINDIR)
 	$(CC) $(CFLAGS) -o $@ $^ -lrt

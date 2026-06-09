@@ -11,9 +11,7 @@
 #define RES_MATRICULA_SIN_MATERIA     11
 #define RES_MATRICULA_SIN_PROFESOR    12
 
-/* ── Helpers de entrada ────────────────────────────────────────────────── */
-
-/* Descarta los caracteres que quedaron en el buffer de stdin después de una lectura truncada, hasta encontrar '\n' o EOF. */
+/* Descarta el sobrante del buffer de stdin hasta '\n' o EOF. */
 static void vaciar_stdin(void)
 {
     int c;
@@ -21,7 +19,7 @@ static void vaciar_stdin(void)
         ;
 }
 
-/* Solicita un campo de texto no vacío en un loop, descartando el exceso si el usuario supera el límite y repitiendo si el campo queda vacío. */
+/* Lee un campo no vacío. Repite si queda vacío y descarta el exceso. */
 static int leer_campo(const char *etiqueta, char *destino, size_t tam_max)
 {
     for (;;) {
@@ -35,7 +33,7 @@ static int leer_campo(const char *etiqueta, char *destino, size_t tam_max)
     }
 }
 
-/* Lee una opción numérica del rango [minimo, maximo] en un loop, rechazando entradas no numéricas o fuera de rango hasta que el usuario ingrese algo válido. */
+/* Lee un entero en [minimo, maximo]. Repite si la entrada es inválida. */
 static int leer_opcion(int minimo, int maximo)
 {
     char buf_lectura[16];
@@ -53,9 +51,7 @@ static int leer_opcion(int minimo, int maximo)
     }
 }
 
-/* ── Comunicación con el servidor ──────────────────────────────────────── */
-
-/* Serializa el mensaje a un buffer plano y lo envía completo al servidor iterando sobre send() hasta agotar los bytes. */
+/* send() puede devolver menos de TAM_BUFFER_MSG por llamada. */
 static int enviar_msg(int fd_socket, const Mensaje *men)
 {
     char buf_serial[TAM_BUFFER_MSG];
@@ -70,7 +66,7 @@ static int enviar_msg(int fd_socket, const Mensaje *men)
     return 0;
 }
 
-/* Recibe el buffer completo del servidor iterando sobre recv() y lo deserializa en un struct Mensaje. */
+/* recv() puede devolver menos de TAM_BUFFER_MSG por llamada. */
 static int recibir_msg(int fd_socket, Mensaje *men)
 {
     char buf_serial[TAM_BUFFER_MSG];
@@ -84,7 +80,7 @@ static int recibir_msg(int fd_socket, Mensaje *men)
     return msg_deserializar(buf_serial, men);
 }
 
-/* Envía el mensaje al servidor y espera la respuesta. Si la comunicación falla en cualquier dirección, imprime el error y retorna error. */
+/* Envía y recibe. Retorna -1 si falla la comunicación. */
 static int transaccion(int fd_socket, const Mensaje *men, Mensaje *respuesta)
 {
     if (enviar_msg(fd_socket, men) < 0 || recibir_msg(fd_socket, respuesta) < 0) {
@@ -94,7 +90,7 @@ static int transaccion(int fd_socket, const Mensaje *men, Mensaje *respuesta)
     return 0;
 }
 
-/* Muestra un submenú con las tres opciones de grado académico y copia el string correspondiente al buffer de destino. */
+/* Submenú para elegir el grado académico. */
 static int leer_grado_academico(char *destino, size_t tam_max)
 {
     static const char *grados[] = {"Licenciatura", "Maestria", "Doctorado"};
@@ -107,7 +103,6 @@ static int leer_grado_academico(char *destino, size_t tam_max)
     return 0;
 }
 
-/* Imprime en pantalla todos los campos del Estudiante recibido. */
 static void mostrar_estudiante(const Estudiante *est)
 {
     printf("  Cedula    : %s\n", est->cedula);
@@ -116,7 +111,6 @@ static void mostrar_estudiante(const Estudiante *est)
     printf("  Telefono  : %s\n", est->telefono);
 }
 
-/* Imprime en pantalla todos los campos del Profesor, incluyendo el grado académico. */
 static void mostrar_profesor(const Profesor *prof)
 {
     printf("  Cedula    : %s\n", prof->cedula);
@@ -126,14 +120,12 @@ static void mostrar_profesor(const Profesor *prof)
     printf("  Grado     : %s\n", prof->grado_academico);
 }
 
-/* Imprime en pantalla el código y la descripción de la Materia. */
 static void mostrar_materia(const Materia *mat)
 {
     printf("  Codigo      : %s\n", mat->codigo);
     printf("  Descripcion : %s\n", mat->descripcion);
 }
 
-/* Imprime en pantalla todos los campos de la Matricula, incluyendo estudiante, profesor, materia y horario. */
 static void mostrar_matricula(const Matricula *insc)
 {
     printf("  Cod. Matricula : %s\n", insc->codigo_matricula);
@@ -145,7 +137,7 @@ static void mostrar_matricula(const Matricula *insc)
     printf("  Horario        : %s\n", insc->horario);
 }
 
-/* Solicita al usuario los datos del estudiante, construye un mensaje OP_INSERTAR y lo envía al servidor mostrando el resultado de la operación. */
+/* Lee los datos e inserta el estudiante. */
 static int op_ingresar_estudiante(int fd_socket)
 {
     printf("\n--- Ingresar Estudiante ---\n");
@@ -171,7 +163,7 @@ static int op_ingresar_estudiante(int fd_socket)
     return 0;
 }
 
-/* Solicita la cédula, envía un mensaje OP_BUSCAR al servidor y muestra los datos del estudiante si la respuesta es RES_OK. */
+/* Busca un estudiante por cédula. */
 static int op_buscar_estudiante(int fd_socket)
 {
     printf("\n--- Buscar Estudiante ---\n");
@@ -196,7 +188,7 @@ static int op_buscar_estudiante(int fd_socket)
     return 0;
 }
 
-/* Solicita los datos del profesor (incluyendo el grado académico) y envía el mensaje de inserción al servidor. */
+/* Lee los datos e inserta el profesor. */
 static int op_ingresar_profesor(int fd_socket)
 {
     printf("\n--- Ingresar Profesor ---\n");
@@ -223,7 +215,7 @@ static int op_ingresar_profesor(int fd_socket)
     return 0;
 }
 
-/* Solicita la cédula del profesor, envía el mensaje de búsqueda y muestra los datos si el servidor los encuentra. */
+/* Busca un profesor por cédula. */
 static int op_buscar_profesor(int fd_socket)
 {
     printf("\n--- Buscar Profesor ---\n");
@@ -248,7 +240,7 @@ static int op_buscar_profesor(int fd_socket)
     return 0;
 }
 
-/* Solicita el código y la descripción de la materia y envía el mensaje de inserción al servidor. */
+/* Lee los datos e inserta la materia. */
 static int op_ingresar_materia(int fd_socket)
 {
     printf("\n--- Ingresar Materia ---\n");
@@ -272,7 +264,7 @@ static int op_ingresar_materia(int fd_socket)
     return 0;
 }
 
-/* Solicita el código de la materia, envía el mensaje de búsqueda y muestra los datos si el servidor los encuentra. */
+/* Busca una materia por código. */
 static int op_buscar_materia(int fd_socket)
 {
     printf("\n--- Buscar Materia ---\n");
@@ -297,7 +289,7 @@ static int op_buscar_materia(int fd_socket)
     return 0;
 }
 
-/* Solicita todos los campos de la matrícula, envía el mensaje de inserción e interpreta el código de resultado para informar qué referencia falta si la operación falla. */
+/* Lee los datos e inserta la matrícula. Informa qué referencia falta si falla. */
 static int op_ingresar_matricula(int fd_socket)
 {
     printf("\n--- Ingresar Matricula ---\n");
@@ -340,7 +332,7 @@ static int op_ingresar_matricula(int fd_socket)
     return 0;
 }
 
-/* Solicita el código de matrícula, envía el mensaje de búsqueda y muestra el registro completo si el servidor lo encuentra. */
+/* Busca una matrícula por código. */
 static int op_buscar_matricula(int fd_socket)
 {
     printf("\n--- Buscar Matricula ---\n");
@@ -365,7 +357,7 @@ static int op_buscar_matricula(int fd_socket)
     return 0;
 }
 
-/* Muestra el submenú de Estudiantes en loop y despacha hacia la operación de ingreso o búsqueda según la opción elegida. */
+/* Submenú de Estudiantes. */
 static int submenu_estudiante(int fd_socket)
 {
     for (;;) {
@@ -380,7 +372,7 @@ static int submenu_estudiante(int fd_socket)
     }
 }
 
-/* Muestra el submenú de Profesores en loop y despacha hacia la operación de ingreso o búsqueda según la opción elegida. */
+/* Submenú de Profesores. */
 static int submenu_profesor(int fd_socket)
 {
     for (;;) {
@@ -395,7 +387,7 @@ static int submenu_profesor(int fd_socket)
     }
 }
 
-/* Muestra el submenú de Materias en loop y despacha hacia la operación de ingreso o búsqueda según la opción elegida. */
+/* Submenú de Materias. */
 static int submenu_materia(int fd_socket)
 {
     for (;;) {
@@ -410,7 +402,7 @@ static int submenu_materia(int fd_socket)
     }
 }
 
-/* Muestra el submenú de Matrículas en loop y despacha hacia la operación de ingreso o búsqueda según la opción elegida. */
+/* Submenú de Matrículas. */
 static int submenu_matricula(int fd_socket)
 {
     for (;;) {
@@ -425,7 +417,7 @@ static int submenu_matricula(int fd_socket)
     }
 }
 
-/* Muestra el menú principal en loop y redirige al submenú correspondiente según la opción del usuario. Retorna cuando el usuario elige Salir o se pierde la conexión. */
+/* Menú principal. Retorna al salir o si se pierde la conexión. */
 int menu_principal(int fd_socket)
 {
     printf("\n========================================\n");

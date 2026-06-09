@@ -3,8 +3,6 @@
 #include <string.h>
 #include <stdint.h>
 
-/* ── Serialización ─────────────────────────────────────────────────────── */
-
 /*
  * Formato del buffer plano (big-endian para tam_payload):
  *   [0]      entidad      (uint8)
@@ -55,8 +53,6 @@ int msg_deserializar(const char buf[TAM_BUFFER_MSG], Mensaje *men)
     memcpy(men->payload, buf + TAM_CABECERA_MSG, TAM_PAYLOAD);
     return 0;
 }
-
-/* ── Helpers de payload ─────────────────────────────────────────────────── */
 
 void msg_empacar_estudiante(Mensaje *men, const Estudiante *est)
 {

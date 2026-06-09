@@ -3,8 +3,7 @@
 
 #include "../protocolo/protocolo.h"
 
-/* Crea el directorio de datos si no existe.
-   Debe llamarse una vez desde main antes de cualquier operación. */
+/* Crea el directorio de datos. Llamar una vez al inicio. */
 void persistencia_init(void);
 void persistencia_destruir(void);
 

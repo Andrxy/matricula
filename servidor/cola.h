@@ -4,11 +4,10 @@
 #include <mqueue.h>
 #include "../protocolo/protocolo.h"
 
-/* Nombre de la cola POSIX: debe comenzar con '/'. */
+/* El nombre debe comenzar con '/'. */
 #define NOMBRE_COLA "/matricula_srv"
 
-/* Unidad que viaja por la cola: petición + descriptor del socket origen.
-   El despachador necesita fd_conexion para enviar la respuesta al cliente. */
+/* fd_conexion es necesario para que el despachador envíe la respuesta al cliente. */
 typedef struct {
     int fd_conexion;
     Mensaje mensaje;

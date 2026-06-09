@@ -19,14 +19,30 @@
 #define BACKLOG     16
 #define ARCHIVO_LOG "servidor.log"
 
-/* ── Argumento del hilo por conexión ───────────────────────────────────── */
-
 typedef struct {
     int fd_conexion;
     mqd_t desc_cola;
 } ArgHilo;
 
-/* Garantiza que se lean exactamente tam bytes del socket, iterando porque recv() puede retornar menos en cada llamada. */
+static const char *ent_str(uint8_t e) {
+    switch(e) {
+        case ENT_ESTUDIANTE: return "estudiante";
+        case ENT_PROFESOR:   return "profesor";
+        case ENT_MATERIA:    return "materia";
+        case ENT_MATRICULA:  return "matricula";
+        default:             return "?";
+    }
+}
+
+static const char *op_str(uint8_t op) {
+    switch(op) {
+        case OP_INSERTAR: return "insertar";
+        case OP_BUSCAR:   return "buscar";
+        default:          return "?";
+    }
+}
+
+/* recv() puede devolver menos de tam bytes por llamada. */
 static ssize_t recibir_exacto(int descriptor, void *buf, size_t tam)
 {
     size_t total = 0;
@@ -39,7 +55,7 @@ static ssize_t recibir_exacto(int descriptor, void *buf, size_t tam)
     return (ssize_t)total;
 }
 
-/* Hilo asociado a cada conexión entrante que recibe mensajes del cliente y los encola en la cola POSIX para que el despachador los procese. */
+/* Recibe mensajes del cliente y los encola para el despachador. */
 static void *atender_cliente(void *argumento)
 {
     ArgHilo *args = (ArgHilo *)argumento;
@@ -54,7 +70,7 @@ static void *atender_cliente(void *argumento)
         inet_ntop(AF_INET, &par_remoto.sin_addr, ip_cliente, sizeof(ip_cliente));
 
     char buf_log[128];
-    snprintf(buf_log, sizeof(buf_log), "conexión fd=%d ip=%s", fd_conexion, ip_cliente);
+    snprintf(buf_log, sizeof(buf_log), "cliente %s conectado", ip_cliente);
     log_evento(LOG_INFO, buf_log);
 
     char buf_msg[TAM_BUFFER_MSG];
@@ -63,18 +79,18 @@ static void *atender_cliente(void *argumento)
     for (;;) {
         ssize_t leidos = recibir_exacto(fd_conexion, buf_msg, TAM_BUFFER_MSG);
         if (leidos == 0) {
-            snprintf(buf_log, sizeof(buf_log), "desconexión fd=%d ip=%s", fd_conexion, ip_cliente);
+            snprintf(buf_log, sizeof(buf_log), "cliente %s desconectado", ip_cliente);
             log_evento(LOG_INFO, buf_log);
             break;
         }
         if (leidos < 0) {
-            snprintf(buf_log, sizeof(buf_log), "recv error fd=%d ip=%s", fd_conexion, ip_cliente);
+            snprintf(buf_log, sizeof(buf_log), "error recv de %s", ip_cliente);
             log_evento(LOG_ERROR, buf_log);
             break;
         }
 
         if (msg_deserializar(buf_msg, &men) < 0) {
-            snprintf(buf_log, sizeof(buf_log), "msg_deserializar falló fd=%d", fd_conexion);
+            snprintf(buf_log, sizeof(buf_log), "mensaje inválido de %s", ip_cliente);
             log_evento(LOG_ERROR, buf_log);
             break;
         }
@@ -83,14 +99,13 @@ static void *atender_cliente(void *argumento)
         peticion.fd_conexion = fd_conexion;
         peticion.mensaje = men;
         if (cola_encolar(desc_cola, &peticion) < 0) {
-            snprintf(buf_log, sizeof(buf_log), "cola_encolar falló fd=%d", fd_conexion);
+            snprintf(buf_log, sizeof(buf_log), "cola llena, petición de %s descartada", ip_cliente);
             log_evento(LOG_ERROR, buf_log);
             break;
         }
 
-        snprintf(buf_log, sizeof(buf_log),
-                 "petición encolada fd=%d entidad=%u op=%u",
-                 fd_conexion, men.entidad, men.operacion);
+        snprintf(buf_log, sizeof(buf_log), "%s %s de %s",
+                 op_str(men.operacion), ent_str(men.entidad), ip_cliente);
         log_evento(LOG_INFO, buf_log);
     }
 
@@ -98,25 +113,22 @@ static void *atender_cliente(void *argumento)
     return NULL;
 }
 
-/* Inicializa el sistema en orden (log, persistencia, cola POSIX, despachador) y entra al accept loop para atender conexiones TCP. */
+/* Arranca subsistemas y entra al accept loop. */
 int main(void)
 {
     if (log_iniciar(ARCHIVO_LOG) < 0) exit(1);
 
     persistencia_init();
-    log_evento(LOG_INFO, "persistencia inicializada");
+    log_evento(LOG_INFO, "datos listos");
 
     mqd_t desc_cola = cola_crear();
     if (desc_cola == (mqd_t)-1) {
-        log_evento(LOG_ERROR, "no se pudo crear la cola de mensajes");
+        log_evento(LOG_ERROR, "no se pudo crear la cola");
         persistencia_destruir();
         log_cerrar();
         exit(1);
     }
-
-    char buf_log[64];
-    snprintf(buf_log, sizeof(buf_log), "cola de mensajes POSIX creada mqd=%d", (int)desc_cola);
-    log_evento(LOG_INFO, buf_log);
+    log_evento(LOG_INFO, "cola lista");
 
     pthread_t hilo_despachador;
     if (despachador_iniciar(desc_cola, &hilo_despachador) < 0) {
@@ -127,11 +139,11 @@ int main(void)
         exit(1);
     }
     pthread_detach(hilo_despachador);
-    log_evento(LOG_INFO, "despachador iniciado");
+    log_evento(LOG_INFO, "despachador listo");
 
     int fd_escucha = socket(AF_INET, SOCK_STREAM, 0);
     if (fd_escucha == -1) {
-        log_evento(LOG_ERROR, "socket() falló");
+        log_evento(LOG_ERROR, "socket falló");
         cola_destruir(desc_cola);
         persistencia_destruir();
         log_cerrar();
@@ -149,15 +161,16 @@ int main(void)
 
     if (bind(fd_escucha, (struct sockaddr *)&direccion, sizeof(direccion)) == -1) {
         perror("bind");
-        log_evento(LOG_ERROR, "bind() falló — ¿hay ya un servidor corriendo en el puerto?");
+        log_evento(LOG_ERROR, "bind falló, quizá hay otro servidor en este puerto");
         cola_destruir(desc_cola); persistencia_destruir(); log_cerrar(); exit(1);
     }
     if (listen(fd_escucha, BACKLOG) == -1) {
-        log_evento(LOG_ERROR, "listen() falló");
+        log_evento(LOG_ERROR, "listen falló");
         cola_destruir(desc_cola); persistencia_destruir(); log_cerrar(); exit(1);
     }
 
-    snprintf(buf_log, sizeof(buf_log), "escuchando en puerto %d", PUERTO);
+    char buf_log[64];
+    snprintf(buf_log, sizeof(buf_log), "escucha en :%d", PUERTO);
     log_evento(LOG_INFO, buf_log);
     printf("[servidor] escuchando en puerto %d — log: %s\n", PUERTO, ARCHIVO_LOG);
     fflush(stdout);
@@ -170,7 +183,7 @@ int main(void)
                                  &tam_dir_cliente);
         if (fd_conexion == -1) {
             if (errno == EINTR) continue;
-            log_evento(LOG_ERROR, "accept() falló");
+            log_evento(LOG_ERROR, "accept falló");
             continue;
         }
 
@@ -181,7 +194,7 @@ int main(void)
 
         pthread_t hilo_cliente;
         if (pthread_create(&hilo_cliente, NULL, atender_cliente, args) != 0) {
-            log_evento(LOG_ERROR, "pthread_create falló para hilo de conexión");
+            log_evento(LOG_ERROR, "no se pudo crear hilo de conexión");
             free(args);
             close(fd_conexion);
             continue;

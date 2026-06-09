@@ -4,7 +4,6 @@
 #include <stdint.h>
 #include <stddef.h>
 
-/* ── Tamaños de campos ─────────────────────────────────────────────────── */
 #define TAM_NOMBRE          64
 #define TAM_CEDULA          16
 #define TAM_CODIGO          16
@@ -17,25 +16,20 @@
 #define TAM_HORARIO         64
 #define TAM_PAYLOAD         512
 
-/* ── Códigos de entidad ────────────────────────────────────────────────── */
 #define ENT_ESTUDIANTE  1
 #define ENT_PROFESOR    2
 #define ENT_MATERIA     3
 #define ENT_MATRICULA   4
 
-/* ── Códigos de operación ──────────────────────────────────────────────── */
 #define OP_INSERTAR     1
 #define OP_BUSCAR       2
 #define OP_LISTAR       3
 #define OP_ELIMINAR     4
 
-/* ── Códigos de resultado ──────────────────────────────────────────────── */
 #define RES_OK          0
 #define RES_ERROR       1
 #define RES_NO_ENCONTRADO 2
 #define RES_DUPLICADO   3
-
-/* ── Structs de entidades ──────────────────────────────────────────────── */
 
 typedef struct {
     char cedula[TAM_CEDULA];
@@ -67,8 +61,6 @@ typedef struct {
     char horario[TAM_HORARIO];
 } Matricula;
 
-/* ── Mensaje genérico ──────────────────────────────────────────────────── */
-
 typedef struct {
     uint8_t entidad;            /* ENT_*  */
     uint8_t operacion;          /* OP_*   */
@@ -84,15 +76,11 @@ typedef struct {
 /* Tamaño total del buffer plano: cabecera + payload completo */
 #define TAM_BUFFER_MSG    (TAM_CABECERA_MSG + TAM_PAYLOAD)
 
-/* ── Serialización / deserialización ───────────────────────────────────── */
-
-/* Serializa men en buf (TAM_BUFFER_MSG bytes). Devuelve 0 en éxito, -1 si NULL. */
+/* Serializa men en buf (TAM_BUFFER_MSG bytes). Retorna 0 en éxito o -1 si algún puntero es NULL. */
 int msg_serializar(const Mensaje *men, char buf[TAM_BUFFER_MSG]);
 
-/* Deserializa buf en men. Devuelve 0 en éxito, -1 si algún puntero es NULL. */
+/* Deserializa buf en men. Retorna 0 en éxito o -1 si algún puntero es NULL. */
 int msg_deserializar(const char buf[TAM_BUFFER_MSG], Mensaje *men);
-
-/* ── Helpers de payload ─────────────────────────────────────────────────── */
 
 /* Copia la entidad en men->payload y ajusta tam_payload. */
 void msg_empacar_estudiante(Mensaje *men, const Estudiante *est);
